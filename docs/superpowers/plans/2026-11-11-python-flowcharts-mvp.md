@@ -79,11 +79,11 @@ tests/test_dot.py  tests/test_mermaid.py  tests/test_cli.py
   - `@dataclass(frozen=True) ChartOptions(show_variables: bool = False, show_parameters: bool = True, show_returns: bool = True, max_label_length: int = 60)`
 - Produces (in `pyflowcharts.labels`): `shorten(text: str, max_length: int) -> str`
 
-- [ ] **Step 1: Create branch and `pyproject.toml`**
+- [x] **Step 1: Create branch and `pyproject.toml`**
 
 `git switch -c feat/mvp`. Build backend `hatchling`, settings from Global Constraints, `[dependency-groups] dev = ["pytest", "ruff"]`, `[tool.pytest.ini_options] testpaths = ["tests"]`, `[tool.ruff] line-length = 100`. Add `__version__ = "0.1.0"` in `__init__.py`. Run `uv sync`. Expected: creates `.venv` and `uv.lock`. Add a `.gitignore` covering `.venv/`, `__pycache__/`, `flowcharts/`.
 
-- [ ] **Step 2: Write failing tests**
+- [x] **Step 2: Write failing tests**
 
 ```python
 from pyflowcharts.ir import ChartOptions, NodeKind
@@ -106,13 +106,13 @@ def test_default_options():
     assert ChartOptions() == ChartOptions(False, True, True, 60)
 ```
 
-- [ ] **Step 3: Run** `uv run pytest tests/test_ir.py -v`. Expected: FAIL (ImportError).
+- [x] **Step 3: Run** `uv run pytest tests/test_ir.py -v`. Expected: FAIL (ImportError).
 
-- [ ] **Step 4: Implement `ir.py` and `shorten()`** as in Interfaces. `shorten` uses `" ".join(text.split())`.
+- [x] **Step 4: Implement `ir.py` and `shorten()`** as in Interfaces. `shorten` uses `" ".join(text.split())`.
 
-- [ ] **Step 5: Run** `uv run pytest tests/test_ir.py -v && uv run ruff check`. Expected: PASS, no lint errors.
+- [x] **Step 5: Run** `uv run pytest tests/test_ir.py -v && uv run ruff check`. Expected: PASS, no lint errors.
 
-- [ ] **Step 6: Commit** `feat: project scaffold, IR dataclasses and label shortening`
+- [x] **Step 6: Commit** `feat: project scaffold, IR dataclasses and label shortening`
 
 ---
 
@@ -129,7 +129,7 @@ def test_default_options():
   - `from_json(text: str) -> Document`: rebuilds the nested dataclasses and enums.
   - `class UnsupportedSchemaVersionError(ValueError)`: raised by `from_json` when `schema_version != SCHEMA_VERSION`.
 
-- [ ] **Step 1: Write failing tests.** Build a `Document` by hand with one `FunctionChart` holding one `Parameter`, nodes of kinds START/PROCESS/END (one with `location=None`), and edges with and without labels.
+- [x] **Step 1: Write failing tests.** Build a `Document` by hand with one `FunctionChart` holding one `Parameter`, nodes of kinds START/PROCESS/END (one with `location=None`), and edges with and without labels.
 
 ```python
 def test_round_trip(doc):
@@ -153,10 +153,10 @@ def test_non_ascii_preserved(doc):  # label "print('é')"
     assert "é" in to_json(doc)
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_serialize.py -v`. Expected: FAIL (ImportError).
-- [ ] **Step 3: Implement** `to_json` and `from_json`. Rebuild objects explicitly per type (`SourceLocation(**d)` when not `None`, `NodeKind(d["kind"])`, …). Don't use a generic reflection helper.
-- [ ] **Step 4: Run** the tests. Expected: PASS.
-- [ ] **Step 5: Commit** `feat: JSON serialization of the IR with schema version check`
+- [x] **Step 2: Run** `uv run pytest tests/test_serialize.py -v`. Expected: FAIL (ImportError).
+- [x] **Step 3: Implement** `to_json` and `from_json`. Rebuild objects explicitly per type (`SourceLocation(**d)` when not `None`, `NodeKind(d["kind"])`, …). Don't use a generic reflection helper.
+- [x] **Step 4: Run** the tests. Expected: PASS.
+- [x] **Step 5: Commit** `feat: JSON serialization of the IR with schema version check`
 
 ---
 
@@ -198,7 +198,7 @@ All labels go through `shorten(..., options.max_label_length)`.
 - with parameters shown: `f"{'async ' if is_async else ''}def {name}({ast.unparse(func.args)})"` plus `f" -> {ast.unparse(func.returns)}"` when annotated
 - with parameters hidden: `def {name}(...)`, with the `async ` prefix but no return annotation
 
-- [ ] **Step 1: Write `tests/conftest.py` helpers**
+- [x] **Step 1: Write `tests/conftest.py` helpers**
 
 ```python
 def chart_of(src: str, qualname: str = "f", **opts) -> FunctionChart:
@@ -210,7 +210,7 @@ def flow(chart: FunctionChart) -> set[tuple[str, str, str | None]]:
     return {(label[e.source], label[e.target], e.label) for e in chart.edges}
 ```
 
-- [ ] **Step 2: Write failing tests in `tests/test_frontend.py`**
+- [x] **Step 2: Write failing tests in `tests/test_frontend.py`**
 
 ```python
 def test_sequential_body_and_implicit_end():
@@ -323,10 +323,10 @@ def test_document_metadata():
     assert (doc.source, doc.language, doc.functions, doc.schema_version) == ("empty.py", "python", [], 1)
 ```
 
-- [ ] **Step 3: Run** `uv run pytest tests/test_frontend.py -v`. Expected: FAIL (ImportError).
-- [ ] **Step 4: Implement** the `frontends` package, `PythonFrontend`, discovery, signatures, `start_label_for` and `CfgBuilder` as specified above.
-- [ ] **Step 5: Run** `uv run pytest -v && uv run ruff check`. Expected: all PASS.
-- [ ] **Step 6: Commit** `feat: Python frontend with function discovery, signatures and sequential CFG`
+- [x] **Step 3: Run** `uv run pytest tests/test_frontend.py -v`. Expected: FAIL (ImportError).
+- [x] **Step 4: Implement** the `frontends` package, `PythonFrontend`, discovery, signatures, `start_label_for` and `CfgBuilder` as specified above.
+- [x] **Step 5: Run** `uv run pytest -v && uv run ruff check`. Expected: all PASS.
+- [x] **Step 6: Commit** `feat: Python frontend with function discovery, signatures and sequential CFG`
 
 ---
 
@@ -344,7 +344,7 @@ Rules:
 - `ast.If`: DECISION node `if <test>`. Body from `[(id, "True")]`. If there's an orelse, build it from `[(id, "False")]`, otherwise the frontier is `[(id, "False")]`. Return the union (body first).
 - `ast.Match`: DECISION node `match <subject>`. Each case body is built from `[(id, label)]` with label `f"case {unparse(pattern)}"` plus `f" if {unparse(guard)}"`. Add `(id, "no match")` unless the last case has `guard is None` and its pattern is `ast.MatchAs` with `pattern is None`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_if_elif_else():
@@ -395,10 +395,10 @@ def test_match_with_wildcard_has_no_fallthrough():
     assert all(lbl != "no match" for _, _, lbl in flow(c))
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_cfg_branches.py -v`. Expected: FAIL. With the Task 3 fallback, `if` shows up as one process node.
-- [ ] **Step 3: Implement** the `If` and `Match` cases in `_stmt`.
-- [ ] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
-- [ ] **Step 5: Commit** `feat: CFG support for if/elif/else and match`
+- [x] **Step 2: Run** `uv run pytest tests/test_cfg_branches.py -v`. Expected: FAIL. With the Task 3 fallback, `if` shows up as one process node.
+- [x] **Step 3: Implement** the `If` and `Match` cases in `_stmt`.
+- [x] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
+- [x] **Step 5: Commit** `feat: CFG support for if/elif/else and match`
 
 ---
 
@@ -418,7 +418,7 @@ Rules:
 - Algorithm: connect the frontier to the loop node and push a context. Build the body from `[(loop, enter)]`, connect the body's frontier back to the loop node, then pop. `exit = [(loop, exit_label)]` (unless while-constant-true). If there's an orelse, `exit = _block(orelse, exit)`. Return `exit + ctx.breaks`.
 - `ast.Break`: call `self._break(frontier)` and return `[]`. `ast.Continue`: call `self._continue(frontier)` and return `[]`. Neither creates a node. In this task, `_break` appends to `self._loops[-1].breaks` and `_continue` connects to `self._loops[-1].loop_id`. Thanks to the `compile()` validation from Task 3, `self._loops` is never empty here. If it is anyway, raise `RuntimeError("internal: break/continue outside loop")` rather than letting an `IndexError` escape.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_for_with_break_continue_else():
@@ -462,10 +462,10 @@ def test_async_for_label():
     assert "async for x in s" in {n.label for n in c.nodes}
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_cfg_loops.py -v`. Expected: FAIL.
-- [ ] **Step 3: Implement** the loop, `Break` and `Continue` cases.
-- [ ] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
-- [ ] **Step 5: Commit** `feat: CFG support for loops, break, continue and loop else`
+- [x] **Step 2: Run** `uv run pytest tests/test_cfg_loops.py -v`. Expected: FAIL.
+- [x] **Step 3: Implement** the loop, `Break` and `Continue` cases.
+- [x] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
+- [x] **Step 5: Commit** `feat: CFG support for loops, break, continue and loop else`
 
 ---
 
@@ -494,7 +494,7 @@ Rules:
 - Nested `FunctionDef`/`AsyncFunctionDef`: PROCESS node labelled `start_label_for(stmt, options)`. `ClassDef`: PROCESS node `class <name>`. Discovery from Task 3 already emits the nested chart.
 - `tests/fixtures/sample.py` (about 40 lines) should exercise every construct: a class with a method containing `for`+`if`+`break`, a `@property` with a setter, a function with `try/except/else/finally`, a loop whose body has `try` with `break` and `continue` plus a `finally` (so duplicated finally copies appear in the ID-uniqueness check), a `match`, a `with`, a nested function, an `async def`, and a string label containing `"` and `\n`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_try_except_else_finally():
@@ -595,10 +595,10 @@ def test_sample_fixture_graph_integrity():
         assert all(n.kind is not NodeKind.PROCESS or "\n" not in n.label for n in chart.nodes)
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_cfg_try_with.py -v`. Expected: FAIL.
-- [ ] **Step 3: Implement** the cases and write the fixture.
-- [ ] **Step 4: Run** `uv run pytest -v && uv run ruff check`. Expected: all PASS.
-- [ ] **Step 5: Commit** `feat: CFG support for try, with and nested definitions`
+- [x] **Step 2: Run** `uv run pytest tests/test_cfg_try_with.py -v`. Expected: FAIL.
+- [x] **Step 3: Implement** the cases and write the fixture.
+- [x] **Step 4: Run** `uv run pytest -v && uv run ruff check`. Expected: all PASS.
+- [x] **Step 5: Commit** `feat: CFG support for try, with and nested definitions`
 
 ---
 
@@ -616,7 +616,7 @@ def test_sample_fixture_graph_integrity():
   - `to_dot(chart: FunctionChart) -> str`: returns `to_digraph(chart).source`.
   - `render(chart: FunctionChart, fmt: Literal["svg", "png"]) -> bytes`: calls `to_digraph(chart).pipe(format=fmt)`. `graphviz.ExecutableNotFound` propagates to the caller.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
@@ -655,10 +655,10 @@ def test_renders_whole_fixture():  # every fixture chart is valid DOT
         assert b"<svg" in render(chart, "svg")
 ```
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_dot.py -v`. Expected: FAIL (ImportError).
-- [ ] **Step 3: Implement** `dot.py`. If the escaping assertion doesn't match the exact quoting the graphviz package emits, inspect `to_dot` output and fix the *implementation*, not the requirement. The requirement is that the label's backslash stays a literal backslash and the quotes don't terminate the DOT string.
-- [ ] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
-- [ ] **Step 5: Commit** `feat: Graphviz backend for DOT, SVG and PNG`
+- [x] **Step 2: Run** `uv run pytest tests/test_dot.py -v`. Expected: FAIL (ImportError).
+- [x] **Step 3: Implement** `dot.py`. If the escaping assertion doesn't match the exact quoting the graphviz package emits, inspect `to_dot` output and fix the *implementation*, not the requirement. The requirement is that the label's backslash stays a literal backslash and the quotes don't terminate the DOT string.
+- [x] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
+- [x] **Step 5: Commit** `feat: Graphviz backend for DOT, SVG and PNG`
 
 ---
 
@@ -672,7 +672,7 @@ def test_renders_whole_fixture():  # every fixture chart is valid DOT
 - Consumes: `FunctionChart`, `NodeKind`.
 - Produces: `to_mermaid(chart: FunctionChart) -> str`. The first line is `flowchart TD`, followed by one 4-space-indented line per node and then one per edge, with a trailing newline. Mermaid IDs are `n0…nK` by position in `chart.nodes`. Shape templates (with `{t}` the escaped label): START/END `(["{t}"])`, PROCESS `["{t}"]`, DECISION `{"{t}"}`, LOOP `{{"{t}"}}`, RETURN `[/"{t}"/]`, RAISE `>"{t}"]`. Edges are `nA --> nB` or `nA -->|"{label}"| nB`. Escaping applies to node and edge labels and **must replace `#` first**, so literal source text like `#34;` isn't read as an entity: `#`→`#35;`, then `"`→`#34;`, `<`→`#60;`, `>`→`#62;`.
 
-- [ ] **Step 1: Write failing tests**
+- [x] **Step 1: Write failing tests**
 
 ```python
 def test_mermaid_structure():
@@ -699,10 +699,10 @@ def test_mermaid_shapes():
 
 Node order: `n0` = start and `n1` = end, because `build` creates both before the body. The body nodes follow in creation order.
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_mermaid.py -v`. Expected: FAIL.
-- [ ] **Step 3: Implement** `to_mermaid`.
-- [ ] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
-- [ ] **Step 5: Commit** `feat: Mermaid backend`
+- [x] **Step 2: Run** `uv run pytest tests/test_mermaid.py -v`. Expected: FAIL.
+- [x] **Step 3: Implement** `to_mermaid`.
+- [x] **Step 4: Run** `uv run pytest -v`. Expected: all PASS.
+- [x] **Step 5: Commit** `feat: Mermaid backend`
 
 ---
 
@@ -726,7 +726,7 @@ Behaviour (from the spec's "Output layout & CLI" and "Errors" sections):
 - `graphviz.ExecutableNotFound` while rendering: print `error: Graphviz 'dot' executable not found; install Graphviz (e.g. 'sudo apt install graphviz') or use --format json dot mermaid`, skip further svg/png output, and finish with exit 2 (unless an exit-1 failure happened, in which case 1 wins).
 - Return 0 when everything succeeded.
 
-- [ ] **Step 1: Write failing tests** (use `tmp_path`, `capsys` and `monkeypatch`, and write small source files into `tmp_path`)
+- [x] **Step 1: Write failing tests** (use `tmp_path`, `capsys` and `monkeypatch`, and write small source files into `tmp_path`)
 
 ```python
 def test_default_formats(tmp_path):
@@ -808,8 +808,8 @@ def test_end_to_end_fixture(tmp_path):
 
 `write(dir, name, text)` is a small helper in the test module: it creates `dir`, writes the file and returns the path. `needs_dot` is the same marker as in Task 7. Also put it on `test_default_formats`.
 
-- [ ] **Step 2: Run** `uv run pytest tests/test_cli.py -v`. Expected: FAIL (ImportError).
-- [ ] **Step 3: Implement** `cli.py`.
-- [ ] **Step 4: Write `README.md`.** Cover: what the tool does (one paragraph), installation (`uv sync`, plus installing Graphviz with `sudo apt install graphviz` / `brew install graphviz` for SVG/PNG), usage examples (`uv run pyflowcharts mymodule.py`, the `-f json mermaid` and `--variables` variants), the output layout, a short note that the JSON (schema v1) is the stable format meant for external tools, and the known simplifications copied from the spec.
-- [ ] **Step 5: Run** `uv run pytest -v && uv run ruff check && uv run pyflowcharts tests/fixtures/sample.py -o /tmp/pfc-demo`. Expected: all tests PASS, and the demo writes `sample.json` plus `sample/*.svg`. Open one SVG and check that it looks right.
-- [ ] **Step 6: Commit** `feat: pyflowcharts CLI with multi-format output`
+- [x] **Step 2: Run** `uv run pytest tests/test_cli.py -v`. Expected: FAIL (ImportError).
+- [x] **Step 3: Implement** `cli.py`.
+- [x] **Step 4: Write `README.md`.** Cover: what the tool does (one paragraph), installation (`uv sync`, plus installing Graphviz with `sudo apt install graphviz` / `brew install graphviz` for SVG/PNG), usage examples (`uv run pyflowcharts mymodule.py`, the `-f json mermaid` and `--variables` variants), the output layout, a short note that the JSON (schema v1) is the stable format meant for external tools, and the known simplifications copied from the spec.
+- [x] **Step 5: Run** `uv run pytest -v && uv run ruff check && uv run pyflowcharts tests/fixtures/sample.py -o /tmp/pfc-demo`. Expected: all tests PASS, and the demo writes `sample.json` plus `sample/*.svg`. Open one SVG and check that it looks right.
+- [x] **Step 6: Commit** `feat: pyflowcharts CLI with multi-format output`
