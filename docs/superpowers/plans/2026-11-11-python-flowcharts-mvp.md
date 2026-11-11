@@ -89,18 +89,23 @@ tests/test_dot.py  tests/test_mermaid.py  tests/test_cli.py
 from pyflowcharts.ir import ChartOptions, NodeKind
 from pyflowcharts.labels import shorten
 
+
 def test_shorten_collapses_whitespace():
     assert shorten("a =  1\n   + 2", 60) == "a = 1 + 2"
+
 
 def test_shorten_truncates_with_ellipsis():
     assert shorten("x" * 70, 10) == "x" * 9 + "…"
     assert len(shorten("x" * 70, 10)) == 10
 
+
 def test_shorten_keeps_exact_length():
     assert shorten("x" * 10, 10) == "x" * 10
 
+
 def test_enum_values_are_strings():
     assert NodeKind.DECISION == "decision"
+
 
 def test_default_options():
     assert ChartOptions() == ChartOptions(False, True, True, 60)
@@ -135,19 +140,24 @@ def test_default_options():
 def test_round_trip(doc):
     assert from_json(to_json(doc)) == doc
 
+
 def test_json_shape(doc):
     data = json.loads(to_json(doc))
     assert data["schema_version"] == 1
     assert data["functions"][0]["nodes"][0]["kind"] == "start"
     assert data["functions"][0]["parameters"][0]["kind"] == "positional_or_keyword"
 
+
 def test_deterministic(doc):
     assert to_json(doc) == to_json(copy.deepcopy(doc))
 
+
 def test_rejects_unknown_schema_version(doc):
-    data = json.loads(to_json(doc)); data["schema_version"] = 99
+    data = json.loads(to_json(doc))
+    data["schema_version"] = 99
     with pytest.raises(UnsupportedSchemaVersionError):
         from_json(json.dumps(data))
+
 
 def test_non_ascii_preserved(doc):  # label "print('é')"
     assert "é" in to_json(doc)
@@ -205,6 +215,7 @@ def chart_of(src: str, qualname: str = "f", **opts) -> FunctionChart:
     doc = PythonFrontend().parse(textwrap.dedent(src).encode(), "t.py", ChartOptions(**opts))
     return next(c for c in doc.functions if c.qualname == qualname)
 
+
 def flow(chart: FunctionChart) -> set[tuple[str, str, str | None]]:
     label = {n.id: n.label for n in chart.nodes}
     return {(label[e.source], label[e.target], e.label) for e in chart.edges}
@@ -219,9 +230,13 @@ def test_sequential_body_and_implicit_end():
             print(a)
             g(b)
     """)
-    assert flow(c) == {("def f(a, b=1)", "print(a)", None), ("print(a)", "g(b)", None),
-                       ("g(b)", "end", None)}
+    assert flow(c) == {
+        ("def f(a, b=1)", "print(a)", None),
+        ("print(a)", "g(b)", None),
+        ("g(b)", "end", None),
+    }
     assert c.nodes[0].id == "f#start" and c.nodes[0].kind is NodeKind.START
+
 
 def test_return_and_raise_end_the_path():
     c = chart_of("""
@@ -231,18 +246,29 @@ def test_return_and_raise_end_the_path():
     """)
     assert ("return x + 1", "end", None) in flow(c)
     r = chart_of("def f():\n    raise ValueError('no')\n")
-    assert flow(r) == {("def f()", "raise ValueError('no')", None), ("raise ValueError('no')", "end", None)}
+    assert flow(r) == {
+        ("def f()", "raise ValueError('no')", None),
+        ("raise ValueError('no')", "end", None),
+    }
     assert r.nodes[-1].kind is NodeKind.RAISE
 
+
 def test_signature_recorded():
-    c = chart_of("def f(a: int, /, b=2, *args, c, d: str = 'x', **kw) -> bool: ...",
-                 max_label_length=200)
+    c = chart_of(
+        "def f(a: int, /, b=2, *args, c, d: str = 'x', **kw) -> bool: ...", max_label_length=200
+    )
     P, K = Parameter, ParamKind
-    assert c.parameters == [P("a", "int", None, K.POSITIONAL_ONLY), P("b", None, "2", K.POSITIONAL_OR_KEYWORD),
-        P("args", None, None, K.VAR_POSITIONAL), P("c", None, None, K.KEYWORD_ONLY),
-        P("d", "str", "'x'", K.KEYWORD_ONLY), P("kw", None, None, K.VAR_KEYWORD)]
+    assert c.parameters == [
+        P("a", "int", None, K.POSITIONAL_ONLY),
+        P("b", None, "2", K.POSITIONAL_OR_KEYWORD),
+        P("args", None, None, K.VAR_POSITIONAL),
+        P("c", None, None, K.KEYWORD_ONLY),
+        P("d", "str", "'x'", K.KEYWORD_ONLY),
+        P("kw", None, None, K.VAR_KEYWORD),
+    ]
     assert c.returns == "bool"
     assert c.nodes[0].label == "def f(a: int, /, b=2, *args, c, d: str='x', **kw) -> bool"
+
 
 VARS = """
     def f(xs):
@@ -252,19 +278,24 @@ VARS = """
         return total
 """
 
+
 def test_variables_hidden_unless_call():
     labels = {n.label for n in chart_of(VARS).nodes}
     assert "total = sum(xs)" in labels and not {"n = 0", "n += 1"} & labels
 
+
 def test_variables_shown_with_option():
     assert {"n = 0", "n += 1"} <= {n.label for n in chart_of(VARS, show_variables=True).nodes}
+
 
 def test_hidden_parameters_and_returns():
     labels = {n.label for n in chart_of(VARS, show_parameters=False, show_returns=False).nodes}
     assert {"def f(...)", "return"} <= labels
 
+
 def test_qualnames_and_duplicates():
-    doc = PythonFrontend().parse(textwrap.dedent("""
+    doc = PythonFrontend().parse(
+        textwrap.dedent("""
         def top(): pass
         class A:
             def m(self):
@@ -274,15 +305,20 @@ def test_qualnames_and_duplicates():
             @x.setter
             def x(self, v): pass
         async def co(): pass
-    """).encode(), "t.py", ChartOptions())
+    """).encode(),
+        "t.py",
+        ChartOptions(),
+    )
     assert [c.qualname for c in doc.functions] == ["top", "A.m", "A.m.inner", "A.x", "A.x@L9", "co"]
     co = doc.functions[-1]
     assert co.is_async and co.nodes[0].label == "async def co()"
     assert doc.functions[4].nodes[0].id == "A.x@L9#start"
 
+
 def test_empty_bodies():
     for body in ['"""doc"""', "...", "pass"]:
         assert flow(chart_of(f"def f():\n    {body}\n")) == {("def f()", "end", None)}
+
 
 def test_unreachable_code_kept():
     c = chart_of("def f():\n    return 1\n    print('dead')\n")
@@ -290,9 +326,11 @@ def test_unreachable_code_kept():
     assert all(e.target != dead.id for e in c.edges)
     assert ("return 1", "end", None) in flow(c)
 
+
 def test_long_labels_truncated():
     c = chart_of(f"def f():\n    g({'a' * 100})\n", max_label_length=20)
     assert c.nodes[2].label == "g(" + "a" * 17 + "…"  # nodes[0]=start, nodes[1]=end
+
 
 def test_source_errors():
     with pytest.raises(SourceError) as e:
@@ -301,26 +339,38 @@ def test_source_errors():
     with pytest.raises(SourceError):
         PythonFrontend().parse(b"x = 1\x00\n", "nul.py", ChartOptions())
 
+
 def test_compiler_only_syntax_errors():  # ast.parse accepts these; compile() must reject them
-    for src, line in [(b"def f():\n    break\n", 2), (b"def f():\n    continue\n", 2),
-                      (b"def f():\n    x = 1\n    nonlocal x\n", 3)]:
+    for src, line in [
+        (b"def f():\n    break\n", 2),
+        (b"def f():\n    continue\n", 2),
+        (b"def f():\n    x = 1\n    nonlocal x\n", 3),
+    ]:
         with pytest.raises(SourceError) as e:
             PythonFrontend().parse(src, "loop.py", ChartOptions())
         assert e.value.line == line
+
 
 def test_coding_cookie():
     src = b"# -*- coding: latin-1 -*-\ndef f():\n    print('\xe9')\n"
     doc = PythonFrontend().parse(src, "l1.py", ChartOptions())
     assert doc.functions[0].nodes[2].label == "print('é')"
 
+
 def test_registry():
     assert isinstance(frontend_for_path(Path("x.PY")), PythonFrontend)
     with pytest.raises(UnsupportedLanguageError):
         frontend_for_path(Path("x.js"))
 
+
 def test_document_metadata():
     doc = PythonFrontend().parse(b"", "empty.py", ChartOptions())
-    assert (doc.source, doc.language, doc.functions, doc.schema_version) == ("empty.py", "python", [], 1)
+    assert (doc.source, doc.language, doc.functions, doc.schema_version) == (
+        "empty.py",
+        "python",
+        [],
+        1,
+    )
 ```
 
 - [ ] **Step 3: Run** `uv run pytest tests/test_frontend.py -v`. Expected: FAIL (ImportError).
@@ -358,23 +408,35 @@ def test_if_elif_else():
                 c()
             d()
     """)
-    assert flow(c) == {("def f(x)", "if x > 0", None), ("if x > 0", "a()", "True"),
-        ("if x > 0", "if x < 0", "False"), ("if x < 0", "b()", "True"), ("if x < 0", "c()", "False"),
-        ("a()", "d()", None), ("b()", "d()", None), ("c()", "d()", None), ("d()", "end", None)}
+    assert flow(c) == {
+        ("def f(x)", "if x > 0", None),
+        ("if x > 0", "a()", "True"),
+        ("if x > 0", "if x < 0", "False"),
+        ("if x < 0", "b()", "True"),
+        ("if x < 0", "c()", "False"),
+        ("a()", "d()", None),
+        ("b()", "d()", None),
+        ("c()", "d()", None),
+        ("d()", "end", None),
+    }
     assert next(n for n in c.nodes if n.label == "if x > 0").kind is NodeKind.DECISION
+
 
 def test_if_without_else_falls_through():
     c = chart_of("def f(x):\n    if x:\n        a()\n    b()\n")
     assert {("if x", "a()", "True"), ("if x", "b()", "False"), ("a()", "b()", None)} <= flow(c)
 
+
 def test_if_with_pass_body():
     c = chart_of("def f(x):\n    if x:\n        pass\n    b()\n")
     assert {("if x", "b()", "True"), ("if x", "b()", "False")} <= flow(c)
+
 
 def test_if_branch_returning():
     c = chart_of("def f(x):\n    if x:\n        return 1\n    b()\n")
     assert ("return 1", "b()", None) not in flow(c)
     assert {("return 1", "end", None), ("if x", "b()", "False")} <= flow(c)
+
 
 def test_match_without_wildcard():
     c = chart_of("""
@@ -386,12 +448,19 @@ def test_match_without_wildcard():
                     other(x)
             done()
     """)
-    assert {("match cmd", "go()", "case 'go'"), ("match cmd", "other(x)", "case [x, *_] if x"),
-            ("match cmd", "done()", "no match"), ("go()", "done()", None),
-            ("other(x)", "done()", None)} <= flow(c)
+    assert {
+        ("match cmd", "go()", "case 'go'"),
+        ("match cmd", "other(x)", "case [x, *_] if x"),
+        ("match cmd", "done()", "no match"),
+        ("go()", "done()", None),
+        ("other(x)", "done()", None),
+    } <= flow(c)
+
 
 def test_match_with_wildcard_has_no_fallthrough():
-    c = chart_of("def f(v):\n    match v:\n        case 1:\n            a()\n        case _:\n            b()\n")
+    c = chart_of(
+        "def f(v):\n    match v:\n        case 1:\n            a()\n        case _:\n            b()\n"
+    )
     assert all(lbl != "no match" for _, _, lbl in flow(c))
 ```
 
@@ -434,28 +503,47 @@ def test_for_with_break_continue_else():
                 nobreak()
             after()
     """)
-    assert {("for x in xs", "if x", "next"), ("if x", "for x in xs", "True"),
-            ("if x", "if x is None", "False"), ("if x is None", "after()", "True"),
-            ("if x is None", "work(x)", "False"), ("work(x)", "for x in xs", None),
-            ("for x in xs", "nobreak()", "done"), ("nobreak()", "after()", None)} <= flow(c)
+    assert {
+        ("for x in xs", "if x", "next"),
+        ("if x", "for x in xs", "True"),
+        ("if x", "if x is None", "False"),
+        ("if x is None", "after()", "True"),
+        ("if x is None", "work(x)", "False"),
+        ("work(x)", "for x in xs", None),
+        ("for x in xs", "nobreak()", "done"),
+        ("nobreak()", "after()", None),
+    } <= flow(c)
     assert ("if x is None", "nobreak()", "True") not in flow(c)
     assert next(n for n in c.nodes if n.label == "for x in xs").kind is NodeKind.LOOP
 
+
 def test_while():
     c = chart_of("def f(n):\n    while n > 0:\n        n = step(n)\n    return n\n")
-    assert flow(c) == {("def f(n)", "while n > 0", None), ("while n > 0", "n = step(n)", "True"),
-        ("n = step(n)", "while n > 0", None), ("while n > 0", "return n", "False"),
-        ("return n", "end", None)}
+    assert flow(c) == {
+        ("def f(n)", "while n > 0", None),
+        ("while n > 0", "n = step(n)", "True"),
+        ("n = step(n)", "while n > 0", None),
+        ("while n > 0", "return n", "False"),
+        ("return n", "end", None),
+    }
+
 
 def test_while_true_exits_only_via_break():
     c = chart_of("def f():\n    while True:\n        if poll():\n            break\n    done()\n")
     assert not any(s == "while True" and t == "done()" for s, t, _ in flow(c))
     assert {("if poll()", "done()", "True"), ("if poll()", "while True", "False")} <= flow(c)
 
+
 def test_nested_loops_break_inner_only():
-    c = chart_of("def f(A, B):\n    for a in A:\n        for b in B:\n            break\n        x()\n")
-    assert {("for b in B", "x()", "next"), ("for b in B", "x()", "done"),
-            ("x()", "for a in A", None)} <= flow(c)
+    c = chart_of(
+        "def f(A, B):\n    for a in A:\n        for b in B:\n            break\n        x()\n"
+    )
+    assert {
+        ("for b in B", "x()", "next"),
+        ("for b in B", "x()", "done"),
+        ("x()", "for a in A", None),
+    } <= flow(c)
+
 
 def test_async_for_label():
     c = chart_of("async def f(s):\n    async for x in s:\n        use(x)\n")
@@ -513,19 +601,32 @@ def test_try_except_else_finally():
                 cleanup()
             return data
     """)
-    assert flow(c) == {("def f(path)", "try", None), ("try", "data = load(path)", None),
-        ("try", "except (OSError, ValueError) as e", "exception"), ("try", "except Exception", "exception"),
-        ("except (OSError, ValueError) as e", "log(e)", None), ("log(e)", "return None", None),
-        ("return None", "end", None), ("except Exception", "raise", None), ("raise", "end", None),
-        ("data = load(path)", "use(data)", None), ("use(data)", "finally", None),
-        ("finally", "cleanup()", None), ("cleanup()", "return data", None), ("return data", "end", None)}
+    assert flow(c) == {
+        ("def f(path)", "try", None),
+        ("try", "data = load(path)", None),
+        ("try", "except (OSError, ValueError) as e", "exception"),
+        ("try", "except Exception", "exception"),
+        ("except (OSError, ValueError) as e", "log(e)", None),
+        ("log(e)", "return None", None),
+        ("return None", "end", None),
+        ("except Exception", "raise", None),
+        ("raise", "end", None),
+        ("data = load(path)", "use(data)", None),
+        ("use(data)", "finally", None),
+        ("finally", "cleanup()", None),
+        ("cleanup()", "return data", None),
+        ("return data", "end", None),
+    }
     assert any(n.id.endswith("~finally") for n in c.nodes)
+
 
 def succ(chart, node_id):
     return {e.target for e in chart.edges if e.source == node_id}
 
+
 def node(chart, label):
     return next(n.id for n in chart.nodes if n.label == label)
+
 
 def test_break_runs_finally_before_leaving_loop():
     c = chart_of("""
@@ -539,13 +640,17 @@ def test_break_runs_finally_before_leaving_loop():
                     cleanup()
             after()
     """)
-    assert {("if x", "finally (break)", "True"), ("work(x)", "finally", None),
-            ("for x in xs", "after()", "done")} <= flow(c)
+    assert {
+        ("if x", "finally (break)", "True"),
+        ("work(x)", "finally", None),
+        ("for x in xs", "after()", "done"),
+    } <= flow(c)
     (brk_cleanup,) = succ(c, node(c, "finally (break)"))
     (norm_cleanup,) = succ(c, node(c, "finally"))
     assert succ(c, brk_cleanup) == {node(c, "after()")}
     assert succ(c, norm_cleanup) == {node(c, "for x in xs")}
     assert brk_cleanup.endswith("~break") and brk_cleanup != norm_cleanup
+
 
 def test_finally_can_override_break():
     c = chart_of("""
@@ -560,6 +665,7 @@ def test_finally_can_override_break():
     assert {("try", "finally (break)", None), ("finally (break)", "while True", None)} <= flow(c)
     assert node(c, "after()") not in {e.target for e in c.edges}  # loop never exits
 
+
 def test_continue_runs_finally():
     c = chart_of("""
         def f(xs):
@@ -572,16 +678,28 @@ def test_continue_runs_finally():
     (cont_log,) = succ(c, node(c, "finally (continue)"))
     assert succ(c, cont_log) == {node(c, "for x in xs")}
 
+
 def test_with_statement():
     c = chart_of("def f(p):\n    with open(p) as fh, lock:\n        read(fh)\n")
-    assert flow(c) == {("def f(p)", "with open(p) as fh, lock", None),
-                       ("with open(p) as fh, lock", "read(fh)", None), ("read(fh)", "end", None)}
+    assert flow(c) == {
+        ("def f(p)", "with open(p) as fh, lock", None),
+        ("with open(p) as fh, lock", "read(fh)", None),
+        ("read(fh)", "end", None),
+    }
+
 
 def test_nested_def_is_a_node_and_its_own_chart():
     src = "def outer():\n    def inner(x):\n        return x\n    return inner\n"
-    assert flow(chart_of(src, "outer")) == {("def outer()", "def inner(x)", None),
-        ("def inner(x)", "return inner", None), ("return inner", "end", None)}
-    assert flow(chart_of(src, "outer.inner")) == {("def inner(x)", "return x", None), ("return x", "end", None)}
+    assert flow(chart_of(src, "outer")) == {
+        ("def outer()", "def inner(x)", None),
+        ("def inner(x)", "return inner", None),
+        ("return inner", "end", None),
+    }
+    assert flow(chart_of(src, "outer.inner")) == {
+        ("def inner(x)", "return x", None),
+        ("return x", "end", None),
+    }
+
 
 def test_sample_fixture_graph_integrity():
     path = Path(__file__).parent / "fixtures" / "sample.py"
@@ -622,31 +740,39 @@ def test_sample_fixture_graph_integrity():
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
 IF_SRC = "def f(x):\n    if x > 0:\n        return 1\n    g()\n"
 
+
 def line_for(src: str, node_id: str) -> str:
     return next(l for l in src.splitlines() if l.strip().startswith(f'"{node_id}" ['))
 
+
 def test_nodes_have_shapes_and_tooltips():
-    c = chart_of(IF_SRC); src = to_dot(c)
+    c = chart_of(IF_SRC)
+    src = to_dot(c)
     for n in c.nodes:
         assert f"shape={SHAPES[n.kind]}" in line_for(src, n.id)
     assert 'tooltip="line 2"' in line_for(src, next(n.id for n in c.nodes if n.label == "if x > 0"))
+
 
 def test_edge_labels():
     src = to_dot(chart_of(IF_SRC))
     assert "label=True" in src and "label=False" in src
 
+
 def test_label_escaping():
     src = to_dot(chart_of('def f():\n    print("a\\nb", "it\'s")\n'))
     assert r"""print('a\\nb', \"it's\")""" in src
 
+
 def test_deterministic():
     assert to_dot(chart_of(IF_SRC)) == to_dot(chart_of(IF_SRC))
+
 
 @needs_dot
 def test_render_svg_and_png():
     c = chart_of(IF_SRC)
     assert b"<svg" in render(c, "svg")
     assert render(c, "png")[:8] == b"\x89PNG\r\n\x1a\n"
+
 
 @needs_dot
 def test_renders_whole_fixture():  # every fixture chart is valid DOT
@@ -684,13 +810,16 @@ def test_mermaid_structure():
     assert '    n2 -->|"True"| n3' in lines
     assert "    n0 --> n2" in lines
 
+
 def test_mermaid_escaping():
-    out = to_mermaid(chart_of("def f():\n    print(\"it's\")\n"))
+    out = to_mermaid(chart_of('def f():\n    print("it\'s")\n'))
     assert '["print(#34;it\'s#34;)"]' in out
+
 
 def test_mermaid_escapes_literal_hash():  # literal "#34;" in source must stay literal
     out = to_mermaid(chart_of("def f():\n    print('#34; x#1')\n"))
     assert "[\"print('#35;34; x#35;1')\"]" in out
+
 
 def test_mermaid_shapes():
     out = to_mermaid(chart_of("def f(xs):\n    for x in xs:\n        raise E(x)\n"))
@@ -732,18 +861,34 @@ Behaviour (from the spec's "Output layout & CLI" and "Errors" sections):
 def test_default_formats(tmp_path):
     src = write(tmp_path, "mod.py", "def f(x):\n    return x\n")
     assert main([str(src), "-o", str(tmp_path / "out")]) == 0
-    assert (tmp_path / "out/mod.json").exists() and (tmp_path / "out/mod/f.svg").exists()  # needs_dot
+    assert (tmp_path / "out/mod.json").exists() and (
+        tmp_path / "out/mod/f.svg"
+    ).exists()  # needs_dot
+
 
 def test_text_formats(tmp_path):
     src = write(tmp_path, "mod.py", "class A:\n    def m(self):\n        pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "dot", "mermaid"]) == 0
     assert {p.name for p in (tmp_path / "o/mod").iterdir()} == {"A.m.dot", "A.m.mmd"}
 
+
 def test_options_reach_frontend(tmp_path):
     src = write(tmp_path, "m.py", "def f(a):\n    n = 1\n    return n\n")
-    main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--variables", "--no-parameters", "--no-returns"])
+    main(
+        [
+            str(src),
+            "-o",
+            str(tmp_path / "o"),
+            "-f",
+            "json",
+            "--variables",
+            "--no-parameters",
+            "--no-returns",
+        ]
+    )
     labels = {n.label for n in from_json((tmp_path / "o/m.json").read_text()).functions[0].nodes}
     assert {"n = 1", "def f(...)", "return"} <= labels
+
 
 def test_function_filter_and_unknown(tmp_path, capsys):
     src = write(tmp_path, "m.py", "def a(): pass\ndef b(): pass\n")
@@ -752,6 +897,7 @@ def test_function_filter_and_unknown(tmp_path, capsys):
     assert main([str(src), "-o", str(tmp_path / "o2"), "--function", "zzz"]) == 1
     assert "available: a, b" in capsys.readouterr().err
 
+
 def test_function_accepts_several_names(tmp_path):
     src = write(tmp_path, "m.py", "def a(): pass\ndef b(): pass\ndef c(): pass\n")
     for i, flags in enumerate([["--function", "a", "b"], ["--function", "a", "--function", "b"]]):
@@ -759,17 +905,22 @@ def test_function_accepts_several_names(tmp_path):
         assert main([str(src), "-o", str(out), "-f", "json", *flags]) == 0
         assert [c.qualname for c in from_json((out / "m.json").read_text()).functions] == ["a", "b"]
 
+
 def test_json_only_when_requested(tmp_path):
-    src = write(tmp_path, "m.py", "def f(): pass\n"); empty = write(tmp_path, "e.py", "X = 1\n")
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    empty = write(tmp_path, "e.py", "X = 1\n")
     assert main([str(src), str(empty), "-o", str(tmp_path / "o"), "-f", "mermaid"]) == 0
     assert (tmp_path / "o/m/f.mmd").exists()
     assert not list((tmp_path / "o").glob("*.json"))
 
+
 def test_bad_file_does_not_stop_others(tmp_path, capsys):
-    bad = write(tmp_path, "bad.py", "def f(:\n"); good = write(tmp_path, "good.py", "def g(): pass\n")
+    bad = write(tmp_path, "bad.py", "def f(:\n")
+    good = write(tmp_path, "good.py", "def g(): pass\n")
     assert main([str(bad), str(good), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
     assert f"{bad}:1: error:" in capsys.readouterr().err
     assert (tmp_path / "o/good.json").exists()
+
 
 def test_missing_and_unsupported_files(tmp_path, capsys):
     js = write(tmp_path, "x.js", "")
@@ -777,17 +928,23 @@ def test_missing_and_unsupported_files(tmp_path, capsys):
     err = capsys.readouterr().err
     assert "no such file" in err and "unsupported file type" in err
 
+
 def test_stem_collision(tmp_path, capsys):
-    a = write(tmp_path / "a", "utils.py", "def f(): pass\n"); b = write(tmp_path / "b", "utils.py", "def g(): pass\n")
+    a = write(tmp_path / "a", "utils.py", "def f(): pass\n")
+    b = write(tmp_path / "b", "utils.py", "def g(): pass\n")
     assert main([str(a), str(b), "-o", str(tmp_path / "o")]) == 1
     assert "collision" in capsys.readouterr().err and not (tmp_path / "o").exists()
 
+
 def test_missing_graphviz(tmp_path, monkeypatch, capsys):
-    def boom(*a, **k): raise graphviz.ExecutableNotFound(["dot"])
+    def boom(*a, **k):
+        raise graphviz.ExecutableNotFound(["dot"])
+
     monkeypatch.setattr("pyflowcharts.cli.render", boom)
     src = write(tmp_path, "m.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "json"]) == 2
     assert "Graphviz" in capsys.readouterr().err and (tmp_path / "o/m.json").exists()
+
 
 def test_no_functions_warns(tmp_path, capsys):
     src = write(tmp_path, "m.py", "X = 1\n")
@@ -795,10 +952,13 @@ def test_no_functions_warns(tmp_path, capsys):
     assert "no functions found" in capsys.readouterr().err
     assert from_json((tmp_path / "o/m.json").read_text()).functions == []
 
+
 @needs_dot
 def test_end_to_end_fixture(tmp_path):
     fixture = Path(__file__).parent / "fixtures" / "sample.py"
-    assert main([str(fixture), "-o", str(tmp_path), "-f", "json", "dot", "svg", "png", "mermaid"]) == 0
+    assert (
+        main([str(fixture), "-o", str(tmp_path), "-f", "json", "dot", "svg", "png", "mermaid"]) == 0
+    )
     doc = from_json((tmp_path / "sample.json").read_text())
     assert doc == PythonFrontend().parse(fixture.read_bytes(), str(fixture), ChartOptions())
     for c in doc.functions:
