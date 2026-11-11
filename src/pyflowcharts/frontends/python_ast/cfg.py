@@ -9,6 +9,7 @@ returns an empty frontier.
 from __future__ import annotations
 
 import ast
+from dataclasses import dataclass
 
 from pyflowcharts.ir import ChartOptions, Edge, Node, NodeKind, SourceLocation
 from pyflowcharts.labels import shorten
@@ -49,6 +50,12 @@ def _contains_call(node: ast.AST | None) -> bool:
     return node is not None and any(isinstance(n, ast.Call) for n in ast.walk(node))
 
 
+@dataclass
+class _LoopContext:
+    loop_id: str
+    breaks: Frontier  # paths leaving the loop via `break`
+
+
 class CfgBuilder:
     def __init__(self, qualname: str, options: ChartOptions) -> None:
         self.qualname = qualname
@@ -57,6 +64,7 @@ class CfgBuilder:
         self.edges: list[Edge] = []
         self._end_id = f"{qualname}#end"
         self._copy_suffix = ""
+        self._loops: list[_LoopContext] = []
 
     def build(self, func: FunctionNode, start_label: str) -> tuple[list[Node], list[Edge]]:
         start_id = f"{self.qualname}#start"
@@ -96,8 +104,58 @@ class CfgBuilder:
                 return self._if(stmt, frontier)
             case ast.Match():
                 return self._match(stmt, frontier)
+            case ast.For() | ast.AsyncFor():
+                prefix = "async " if isinstance(stmt, ast.AsyncFor) else ""
+                label = f"{prefix}for {ast.unparse(stmt.target)} in {ast.unparse(stmt.iter)}"
+                return self._loop(stmt, frontier, label, "next", "done", exits=True)
+            case ast.While():
+                always = isinstance(stmt.test, ast.Constant) and bool(stmt.test.value)
+                label = f"while {ast.unparse(stmt.test)}"
+                return self._loop(stmt, frontier, label, "True", "False", exits=not always)
+            case ast.Break():
+                self._break(frontier)
+                return []
+            case ast.Continue():
+                self._continue(frontier)
+                return []
             case _:
                 return self._chain(stmt, frontier, NodeKind.PROCESS, ast.unparse(stmt))
+
+    def _loop(
+        self,
+        stmt: ast.For | ast.AsyncFor | ast.While,
+        frontier: Frontier,
+        label: str,
+        enter: str,
+        leave: str,
+        *,
+        exits: bool,
+    ) -> Frontier:
+        """``exits=False`` for loops whose test is constant-true: only ``break`` leaves them."""
+        node_id = self._add_node(stmt, NodeKind.LOOP, label)
+        self._connect(frontier, node_id)
+        context = _LoopContext(node_id, [])
+        self._loops.append(context)
+        try:
+            body_end = self._block(stmt.body, [(node_id, enter)])
+        finally:
+            self._loops.pop()
+        self._connect(body_end, node_id)
+        out: Frontier = [(node_id, leave)] if exits else []
+        if stmt.orelse:
+            out = self._block(stmt.orelse, out)
+        return out + context.breaks
+
+    def _break(self, frontier: Frontier) -> None:
+        self._innermost_loop().breaks.extend(frontier)
+
+    def _continue(self, frontier: Frontier) -> None:
+        self._connect(frontier, self._innermost_loop().loop_id)
+
+    def _innermost_loop(self) -> _LoopContext:
+        if not self._loops:  # compile() validation in the frontend makes this unreachable
+            raise RuntimeError("internal: break/continue outside loop")
+        return self._loops[-1]
 
     def _if(self, stmt: ast.If, frontier: Frontier) -> Frontier:
         node_id = self._add_node(stmt, NodeKind.DECISION, f"if {ast.unparse(stmt.test)}")
