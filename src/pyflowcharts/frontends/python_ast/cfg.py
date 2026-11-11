@@ -225,7 +225,8 @@ class CfgBuilder:
         ):
             if pending:
                 saved = self._copy_suffix
-                self._copy_suffix += f"~{kind}"
+                # Name the owning `try`, so copy paths through nested try blocks stay unique.
+                self._copy_suffix += f"~{kind}@L{stmt.lineno}C{stmt.col_offset}"
                 try:
                     route(self._finally_copy(stmt, pending, f"finally ({kind})"))
                 finally:

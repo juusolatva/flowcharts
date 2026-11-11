@@ -70,7 +70,7 @@ def test_break_runs_finally_before_leaving_loop():
     (norm_cleanup,) = succ(c, node(c, "finally"))
     assert succ(c, brk_cleanup) == {node(c, "after()")}
     assert succ(c, norm_cleanup) == {node(c, "for x in xs")}
-    assert brk_cleanup.endswith("~break") and brk_cleanup != norm_cleanup
+    assert "~break@L" in brk_cleanup and brk_cleanup != norm_cleanup
 
 
 def test_finally_can_override_break():

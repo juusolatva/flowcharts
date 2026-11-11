@@ -22,7 +22,10 @@ class PythonFrontend:
     def parse(self, source: bytes, path: str, options: ChartOptions) -> Document:
         tree = _parse(source, path)
         collector = _Collector(options)
-        collector.walk(tree.body, prefix="")
+        try:
+            collector.walk(tree.body, prefix="")
+        except (RecursionError, MemoryError) as e:  # e.g. ast.unparse on huge expressions
+            raise SourceError(path, "code is too deeply nested to chart") from e
         return Document(source=path, language=self.language, functions=collector.charts)
 
 
@@ -38,6 +41,8 @@ def _parse(source: bytes, path: str) -> ast.Module:
         raise SourceError(path, e.msg, e.lineno) from e
     except ValueError as e:
         raise SourceError(path, str(e)) from e
+    except (RecursionError, MemoryError) as e:
+        raise SourceError(path, "code is too deeply nested to parse") from e
     return tree
 
 

@@ -158,3 +158,12 @@ def test_document_metadata():
         [],
         1,
     )
+
+
+def test_too_deeply_nested_source_is_a_source_error():
+    deep = "+".join(["1"] * 20000)  # ast.parse itself overflows
+    with pytest.raises(SourceError, match="too deeply nested"):
+        PythonFrontend().parse(f"x = {deep}\n".encode(), "deep.py", ChartOptions())
+    medium = "+".join(["1"] * 3000)  # parses, but charting (ast.unparse) overflows
+    with pytest.raises(SourceError, match="too deeply nested"):
+        PythonFrontend().parse(f"def f():\n    g({medium})\n".encode(), "deep.py", ChartOptions())

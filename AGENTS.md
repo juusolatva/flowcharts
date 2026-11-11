@@ -48,7 +48,7 @@ source file ──► Frontend (per language) ──► IR (Document) ──► 
 
 **IR and JSON format**
 - The IR holds no layout data (no x/y). Layout belongs to Graphviz or the GUI.
-- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]`, and must never contain `:` (DOT treats it as port syntax).
+- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`/`~continue@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax).
 - Output must be deterministic: the same input gives byte-identical JSON, DOT and Mermaid. No sets, hashes or timestamps in the output order.
 - Any change to the JSON shape requires bumping `SCHEMA_VERSION` in `ir.py`, updating `from_json`, and noting it in the spec.
 
