@@ -1,0 +1,62 @@
+import copy
+import json
+
+import pytest
+
+from pyflowcharts.ir import (
+    Document,
+    Edge,
+    FunctionChart,
+    Node,
+    NodeKind,
+    Parameter,
+    ParamKind,
+    SourceLocation,
+)
+from pyflowcharts.serialize import UnsupportedSchemaVersionError, from_json, to_json
+
+
+@pytest.fixture
+def doc() -> Document:
+    loc = SourceLocation(1, 0, 3, 14)
+    chart = FunctionChart(
+        qualname="f",
+        name="f",
+        is_async=False,
+        parameters=[Parameter("x", "int", "1", ParamKind.POSITIONAL_OR_KEYWORD)],
+        returns="None",
+        location=loc,
+        nodes=[
+            Node("f#start", NodeKind.START, "def f(x: int=1) -> None", loc),
+            Node("f#end", NodeKind.END, "end", None),
+            Node("f#L2C4", NodeKind.PROCESS, "print('é')", SourceLocation(2, 4, 2, 14)),
+        ],
+        edges=[Edge("f#start", "f#L2C4"), Edge("f#L2C4", "f#end", "True")],
+    )
+    return Document(source="t.py", language="python", functions=[chart])
+
+
+def test_round_trip(doc):
+    assert from_json(to_json(doc)) == doc
+
+
+def test_json_shape(doc):
+    data = json.loads(to_json(doc))
+    assert data["schema_version"] == 1
+    assert data["functions"][0]["nodes"][0]["kind"] == "start"
+    assert data["functions"][0]["parameters"][0]["kind"] == "positional_or_keyword"
+
+
+def test_deterministic(doc):
+    assert to_json(doc) == to_json(copy.deepcopy(doc))
+
+
+def test_rejects_unknown_schema_version(doc):
+    data = json.loads(to_json(doc))
+    data["schema_version"] = 99
+    with pytest.raises(UnsupportedSchemaVersionError):
+        from_json(json.dumps(data))
+
+
+def test_non_ascii_preserved(doc):
+    assert "é" in to_json(doc)
