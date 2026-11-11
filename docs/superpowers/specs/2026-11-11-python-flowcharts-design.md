@@ -1,4 +1,4 @@
-# python-flowcharts — Design
+# flowcharts — Design
 
 **Date:** 2026-11-11
 **Status:** Draft for review

@@ -1,4 +1,4 @@
-# python-flowcharts MVP Implementation Plan
+# flowcharts MVP Implementation Plan
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -13,7 +13,7 @@
 ## Global Constraints
 
 - `requires-python = ">=3.12"`. The only runtime dependency is `graphviz>=0.21`. Dev dependencies: `pytest`, `ruff`.
-- Distribution name `python-flowcharts`, import package `pyflowcharts`, `src/` layout, console script `pyflowcharts = "pyflowcharts.cli:main"`.
+- Distribution name `flowcharts`, import package `pyflowcharts`, `src/` layout, console script `pyflowcharts = "pyflowcharts.cli:main"`.
 - JSON `schema_version` is `1`. No layout data (x/y) anywhere in the IR.
 - Node IDs: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}`, synthetic suffix `~finally`, duplicated-finally copy suffixes `~break` / `~continue`. **IDs never contain `:`** (DOT port syntax).
 - Default `max_label_length` is 60, and truncation appends `…` (U+2026).
