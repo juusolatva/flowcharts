@@ -55,7 +55,7 @@ def test_match_without_wildcard():
             done()
     """)
     assert {
-        ("match cmd", "go()", "case 'go'"),
+        ("match cmd", "go()", 'case "go"'),
         ("match cmd", "other(x)", "case [x, *_] if x"),
         ("match cmd", "done()", "no match"),
         ("go()", "done()", None),

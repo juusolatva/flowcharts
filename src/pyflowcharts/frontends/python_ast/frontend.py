@@ -12,6 +12,7 @@ from pyflowcharts.frontends.python_ast.cfg import (
     location_of,
     start_label_for,
 )
+from pyflowcharts.frontends.python_ast.source import SourceText
 from pyflowcharts.ir import ChartOptions, Document, FunctionChart, Parameter, ParamKind
 
 
@@ -21,7 +22,7 @@ class PythonFrontend:
 
     def parse(self, source: bytes, path: str, options: ChartOptions) -> Document:
         tree = _parse(source, path)
-        collector = _Collector(options)
+        collector = _Collector(options, SourceText(source))
         try:
             collector.walk(tree.body, prefix="")
         except (RecursionError, MemoryError) as e:  # e.g. ast.unparse on huge expressions
@@ -49,8 +50,9 @@ def _parse(source: bytes, path: str) -> ast.Module:
 class _Collector:
     """Walks the module in source order, emitting a chart for every function definition."""
 
-    def __init__(self, options: ChartOptions) -> None:
+    def __init__(self, options: ChartOptions, source: SourceText) -> None:
         self.options = options
+        self.source = source
         self.charts: list[FunctionChart] = []
         self._seen: set[str] = set()
 
@@ -77,7 +79,7 @@ class _Collector:
         return qualname
 
     def _chart(self, func: FunctionNode, qualname: str) -> FunctionChart:
-        nodes, edges = CfgBuilder(qualname, self.options).build(
+        nodes, edges = CfgBuilder(qualname, self.options, self.source).build(
             func, start_label_for(func, self.options)
         )
         return FunctionChart(

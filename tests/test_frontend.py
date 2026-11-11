@@ -165,5 +165,42 @@ def test_too_deeply_nested_source_is_a_source_error():
     with pytest.raises(SourceError, match="too deeply nested"):
         PythonFrontend().parse(f"x = {deep}\n".encode(), "deep.py", ChartOptions())
     medium = "+".join(["1"] * 3000)  # parses, but charting (ast.unparse) overflows
+    src = f"def f():\n    g(\n{medium})\n"  # multi-line, so the label falls back to ast.unparse
     with pytest.raises(SourceError, match="too deeply nested"):
-        PythonFrontend().parse(f"def f():\n    g({medium})\n".encode(), "deep.py", ChartOptions())
+        PythonFrontend().parse(src.encode(), "deep.py", ChartOptions())
+
+
+SOURCE_TEXT = """
+def f(x):
+    if x == 0xD800:
+        g("double", 'single')
+    for i in range(0b11):
+        print(f"{i!r}", "é")
+    with open("p") as fh, lock:
+        g(fh)
+    match x:
+        case 0x1 | "a":
+            g()
+    raise ValueError("bad")  # trailing comment
+    return {"k": 1_000}
+"""
+
+
+def test_labels_keep_source_text():
+    c = chart_of(SOURCE_TEXT)
+    labels = {n.label for n in c.nodes}
+    assert {
+        "if x == 0xD800",
+        "g(\"double\", 'single')",
+        "for i in range(0b11)",
+        'print(f"{i!r}", "é")',
+        'with open("p") as fh, lock',
+        'raise ValueError("bad")',
+        'return {"k": 1_000}',
+    } <= labels
+    assert 'case 0x1 | "a"' in {e.label for e in c.edges}
+
+
+def test_multiline_labels_fall_back_to_unparse():
+    c = chart_of("def f():\n    g(1,  # note\n      0x2)\n")
+    assert "g(1, 2)" in {n.label for n in c.nodes}

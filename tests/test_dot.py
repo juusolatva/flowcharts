@@ -32,7 +32,7 @@ def test_edge_labels():
 
 def test_label_escaping():
     src = to_dot(chart_of('def f():\n    print("a\\nb", "it\'s")\n'))
-    assert r"""print('a\\nb', \"it's\")""" in src
+    assert r"""print(\"a\\nb\", \"it's\")""" in src
 
 
 def test_deterministic():

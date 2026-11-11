@@ -77,7 +77,7 @@ Rules:
 
 ## Labels
 
-- Source text comes from `ast.unparse`. Whitespace runs collapse to one space, and text is truncated to `max_label_length` (default 60) with `…`.
+- Source text is the original source of the statement or expression when it fits on one line, so literals keep their written form (`0xD800`, quote style, `1_000`). Multi-line code falls back to `ast.unparse`, so comments and `\` continuations never end up in a label. The signature in the start label always uses `ast.unparse`. Whitespace runs collapse to one space, and text is truncated to `max_label_length` (default 60) with `…`.
 - Start: `def name(<params>) -> <ret>` (prefixed `async ` when async). With parameters hidden: `def name(...)`.
 - Return: `return <expr>`, or just `return` with returns hidden.
 - Duplicate qualnames (property setters, redefinitions) get a suffix on the later definitions: `A.x@L9`.
