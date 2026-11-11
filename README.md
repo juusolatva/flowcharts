@@ -1,4 +1,4 @@
-# python-flowcharts
+# flowcharts
 
 `pyflowcharts` reads Python source files and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
 

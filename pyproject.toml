@@ -1,5 +1,5 @@
 [project]
-name = "python-flowcharts"
+name = "flowcharts"
 version = "0.1.0"
 description = "Generate control-flow flowcharts (JSON, DOT, SVG, PNG, Mermaid) from Python functions"
 readme = "README.md"

@@ -4,7 +4,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 ## Project
 
-`python-flowcharts` is a CLI (`pyflowcharts`) that turns each function in a Python source file into a control-flow flowchart. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
+`flowcharts` is a CLI (`pyflowcharts`) that turns each function in a Python source file into a control-flow flowchart. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
 
 - Design spec: `docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`
 - MVP implementation plan: `docs/superpowers/plans/2026-11-11-python-flowcharts-mvp.md`
