@@ -11,6 +11,7 @@ from __future__ import annotations
 import ast
 from dataclasses import dataclass
 
+from pyflowcharts.frontends.python_ast.source import SourceText
 from pyflowcharts.ir import ChartOptions, Edge, Node, NodeKind, SourceLocation
 from pyflowcharts.labels import shorten
 
@@ -29,6 +30,7 @@ def location_of(node: ast.stmt | ast.excepthandler) -> SourceLocation:
 
 
 def start_label_for(func: FunctionNode, options: ChartOptions) -> str:
+    """The signature uses ast.unparse: ``ast.arguments`` has no source position to slice."""
     prefix = "async " if isinstance(func, ast.AsyncFunctionDef) else ""
     if not options.show_parameters:
         return f"{prefix}def {func.name}(...)"
@@ -64,9 +66,10 @@ class _FinallyContext:
 
 
 class CfgBuilder:
-    def __init__(self, qualname: str, options: ChartOptions) -> None:
+    def __init__(self, qualname: str, options: ChartOptions, source: SourceText) -> None:
         self.qualname = qualname
         self.options = options
+        self.source = source
         self.nodes: list[Node] = []
         self.edges: list[Edge] = []
         self._end_id = f"{qualname}#end"
@@ -104,27 +107,27 @@ class CfgBuilder:
                 if value is None or not self.options.show_returns:
                     label = "return"
                 else:
-                    label = f"return {ast.unparse(value)}"
+                    label = f"return {self._text(value)}"
                 return self._terminal(stmt, frontier, NodeKind.RETURN, label)
             case ast.Raise():
-                return self._terminal(stmt, frontier, NodeKind.RAISE, ast.unparse(stmt))
+                return self._terminal(stmt, frontier, NodeKind.RAISE, self._text(stmt))
             case ast.If():
                 return self._if(stmt, frontier)
             case ast.Match():
                 return self._match(stmt, frontier)
             case ast.For() | ast.AsyncFor():
                 prefix = "async " if isinstance(stmt, ast.AsyncFor) else ""
-                label = f"{prefix}for {ast.unparse(stmt.target)} in {ast.unparse(stmt.iter)}"
+                label = f"{prefix}for {self._text(stmt.target)} in {self._text(stmt.iter)}"
                 return self._loop(stmt, frontier, label, "next", "done", exits=True)
             case ast.While():
                 always = isinstance(stmt.test, ast.Constant) and bool(stmt.test.value)
-                label = f"while {ast.unparse(stmt.test)}"
+                label = f"while {self._text(stmt.test)}"
                 return self._loop(stmt, frontier, label, "True", "False", exits=not always)
             case ast.Try() | ast.TryStar():
                 return self._try(stmt, frontier)
             case ast.With() | ast.AsyncWith():
                 prefix = "async " if isinstance(stmt, ast.AsyncWith) else ""
-                items = ", ".join(ast.unparse(item) for item in stmt.items)
+                items = ", ".join(self._withitem(item) for item in stmt.items)
                 out = self._chain(stmt, frontier, NodeKind.PROCESS, f"{prefix}with {items}")
                 return self._block(stmt.body, out)
             case ast.FunctionDef() | ast.AsyncFunctionDef():
@@ -139,7 +142,7 @@ class CfgBuilder:
                 self._continue(frontier)
                 return []
             case _:
-                return self._chain(stmt, frontier, NodeKind.PROCESS, ast.unparse(stmt))
+                return self._chain(stmt, frontier, NodeKind.PROCESS, self._text(stmt))
 
     def _loop(
         self,
@@ -203,7 +206,7 @@ class CfgBuilder:
             for handler in stmt.handlers:
                 label = f"except{star}"
                 if handler.type is not None:
-                    label += f" {ast.unparse(handler.type)}"
+                    label += f" {self._text(handler.type)}"
                 if handler.name is not None:
                     label += f" as {handler.name}"
                 handler_id = self._add_node(handler, NodeKind.PROCESS, label)
@@ -239,7 +242,7 @@ class CfgBuilder:
         return self._block(stmt.finalbody, [(fin_id, None)])
 
     def _if(self, stmt: ast.If, frontier: Frontier) -> Frontier:
-        node_id = self._add_node(stmt, NodeKind.DECISION, f"if {ast.unparse(stmt.test)}")
+        node_id = self._add_node(stmt, NodeKind.DECISION, f"if {self._text(stmt.test)}")
         self._connect(frontier, node_id)
         out = self._block(stmt.body, [(node_id, "True")])
         if stmt.orelse:
@@ -247,13 +250,13 @@ class CfgBuilder:
         return out + [(node_id, "False")]
 
     def _match(self, stmt: ast.Match, frontier: Frontier) -> Frontier:
-        node_id = self._add_node(stmt, NodeKind.DECISION, f"match {ast.unparse(stmt.subject)}")
+        node_id = self._add_node(stmt, NodeKind.DECISION, f"match {self._text(stmt.subject)}")
         self._connect(frontier, node_id)
         out: Frontier = []
         for case in stmt.cases:
-            label = f"case {ast.unparse(case.pattern)}"
+            label = f"case {self._text(case.pattern)}"
             if case.guard is not None:
-                label += f" if {ast.unparse(case.guard)}"
+                label += f" if {self._text(case.guard)}"
             out += self._block(case.body, [(node_id, self._label(label))])
         last = stmt.cases[-1]
         irrefutable = (
@@ -267,6 +270,17 @@ class CfgBuilder:
 
     def _shows(self, stmt: ast.Assign | ast.AugAssign | ast.AnnAssign) -> bool:
         return self.options.show_variables or _contains_call(stmt.value)
+
+    # -- labels ---------------------------------------------------------------
+
+    def _text(self, node: ast.AST) -> str:
+        return self.source.text(node)
+
+    def _withitem(self, item: ast.withitem) -> str:
+        text = self._text(item.context_expr)
+        if item.optional_vars is not None:
+            text += f" as {self._text(item.optional_vars)}"
+        return text
 
     # -- graph primitives ---------------------------------------------------
 
