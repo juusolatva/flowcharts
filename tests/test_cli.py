@@ -136,3 +136,18 @@ def test_max_label_must_be_positive(tmp_path, capsys):
     with pytest.raises(SystemExit) as e:
         main([str(src), "--max-label", "0"])
     assert e.value.code == 2 and "positive integer" in capsys.readouterr().err
+
+
+def test_unwritable_output_dir_is_an_error(tmp_path, capsys):
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    blocker = write(tmp_path, "out", "not a directory")
+    assert main([str(src), "-o", str(blocker), "-f", "json", "mermaid"]) == 1
+    assert "cannot write" in capsys.readouterr().err
+
+
+def test_write_failure_does_not_stop_other_outputs(tmp_path, capsys):
+    long_name = "f" * 300  # longer than typical file-name limits (255 bytes)
+    src = write(tmp_path, "m.py", f"def {long_name}(): pass\ndef g(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "mermaid"]) == 1
+    assert "cannot write" in capsys.readouterr().err
+    assert (tmp_path / "o/m.json").exists() and (tmp_path / "o/m/g.mmd").exists()

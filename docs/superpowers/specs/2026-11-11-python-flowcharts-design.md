@@ -43,7 +43,7 @@ source file ──► Frontend (per language) ──► IR (Document) ──► 
 Rules:
 - The IR always holds the full signature data. Display options only change node labels, plus which assignment nodes exist.
 - **No layout in the IR** (no x/y). Layout belongs to Graphviz or the GUI.
-- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break`/`~continue` for nodes in duplicated finally bodies. IDs never contain `:`, because DOT reads it as port syntax.
+- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`/`~continue@L{line}C{col}` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax.
 - Output is deterministic: the same input gives byte-identical JSON, DOT and Mermaid.
 
 ## Node kinds and shapes
@@ -102,6 +102,8 @@ pyflowcharts FILE [FILE ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 | Syntax error (including compiler-only errors like `break` outside a loop), null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
 | Unknown `--function` name | error listing the available qualnames | 1 |
 | Two inputs with the same stem | error before anything is written | 1 |
+| Code too deeply nested to parse or chart | `path: error: code is too deeply nested …`; other files still processed | 1 |
+| An output file or directory cannot be written | `error: cannot write PATH: reason`; other outputs still written | 1 |
 | `dot` binary missing while `svg`/`png` requested | error explaining how to install Graphviz; non-image outputs still written | 2 |
 | File has no functions | warning on stderr; JSON with empty `functions` written if `json` is selected | 0 |
 

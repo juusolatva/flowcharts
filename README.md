@@ -61,7 +61,7 @@ Methods are named `Class.method` and nested functions `outer.inner`.
 | Code | Meaning |
 |---|---|
 | 0 | Success (a file with no functions only produces a warning) |
-| 1 | A file could not be read or parsed, an unknown `--function`, or two inputs share a file name |
+| 1 | A file could not be read or parsed, an output file could not be written, an unknown `--function`, or two inputs share a file name |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
 ## How code maps to the chart
