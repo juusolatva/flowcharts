@@ -35,7 +35,7 @@ uv run pyflowcharts a.py b.py -o docs/charts --max-label 40
 |---|---|
 | `-o, --output OUTDIR` | Output directory (default `flowcharts`) |
 | `-f, --format FORMAT ...` | Any of `json dot svg png mermaid` (default `svg json`) |
-| `--variables` | Show assignments without calls (assignments containing a call are always shown) |
+| `--variables` | Show assignments without calls (assignments containing a call are always shown, and so are assignments in a block that would otherwise be empty) |
 | `--no-parameters` | Start node shows `def name(...)` instead of the full signature |
 | `--no-returns` | Return nodes show `return` without the value |
 | `--function QUALNAME ...` | Only chart these functions; repeatable |
