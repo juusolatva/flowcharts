@@ -56,6 +56,13 @@ class _LoopContext:
     breaks: Frontier  # paths leaving the loop via `break`
 
 
+@dataclass
+class _FinallyContext:
+    loop_depth: int  # len(loop stack) when the `try` began
+    breaks: Frontier  # pending `break`s that must run the finally body first
+    continues: Frontier  # pending `continue`s that must run the finally body first
+
+
 class CfgBuilder:
     def __init__(self, qualname: str, options: ChartOptions) -> None:
         self.qualname = qualname
@@ -65,6 +72,7 @@ class CfgBuilder:
         self._end_id = f"{qualname}#end"
         self._copy_suffix = ""
         self._loops: list[_LoopContext] = []
+        self._finally: list[_FinallyContext] = []
 
     def build(self, func: FunctionNode, start_label: str) -> tuple[list[Node], list[Edge]]:
         start_id = f"{self.qualname}#start"
@@ -112,6 +120,18 @@ class CfgBuilder:
                 always = isinstance(stmt.test, ast.Constant) and bool(stmt.test.value)
                 label = f"while {ast.unparse(stmt.test)}"
                 return self._loop(stmt, frontier, label, "True", "False", exits=not always)
+            case ast.Try() | ast.TryStar():
+                return self._try(stmt, frontier)
+            case ast.With() | ast.AsyncWith():
+                prefix = "async " if isinstance(stmt, ast.AsyncWith) else ""
+                items = ", ".join(ast.unparse(item) for item in stmt.items)
+                out = self._chain(stmt, frontier, NodeKind.PROCESS, f"{prefix}with {items}")
+                return self._block(stmt.body, out)
+            case ast.FunctionDef() | ast.AsyncFunctionDef():
+                label = start_label_for(stmt, self.options)
+                return self._chain(stmt, frontier, NodeKind.PROCESS, label)
+            case ast.ClassDef():
+                return self._chain(stmt, frontier, NodeKind.PROCESS, f"class {stmt.name}")
             case ast.Break():
                 self._break(frontier)
                 return []
@@ -147,15 +167,75 @@ class CfgBuilder:
         return out + context.breaks
 
     def _break(self, frontier: Frontier) -> None:
-        self._innermost_loop().breaks.extend(frontier)
+        if (pending := self._pending_finally()) is not None:
+            pending.breaks.extend(frontier)
+        else:
+            self._innermost_loop().breaks.extend(frontier)
 
     def _continue(self, frontier: Frontier) -> None:
-        self._connect(frontier, self._innermost_loop().loop_id)
+        if (pending := self._pending_finally()) is not None:
+            pending.continues.extend(frontier)
+        else:
+            self._connect(frontier, self._innermost_loop().loop_id)
+
+    def _pending_finally(self) -> _FinallyContext | None:
+        """The ``try … finally`` a loop transfer must pass through, if it is inside the loop."""
+        if self._finally and self._finally[-1].loop_depth == len(self._loops):
+            return self._finally[-1]
+        return None
 
     def _innermost_loop(self) -> _LoopContext:
         if not self._loops:  # compile() validation in the frontend makes this unreachable
             raise RuntimeError("internal: break/continue outside loop")
         return self._loops[-1]
+
+    def _try(self, stmt: ast.Try | ast.TryStar, frontier: Frontier) -> Frontier:
+        try_id = self._add_node(stmt, NodeKind.PROCESS, "try")
+        self._connect(frontier, try_id)
+        context = _FinallyContext(len(self._loops), [], [])
+        if stmt.finalbody:
+            self._finally.append(context)
+        try:
+            normal = self._block(stmt.body, [(try_id, None)])
+            if stmt.orelse:
+                normal = self._block(stmt.orelse, normal)
+            star = "*" if isinstance(stmt, ast.TryStar) else ""
+            for handler in stmt.handlers:
+                label = f"except{star}"
+                if handler.type is not None:
+                    label += f" {ast.unparse(handler.type)}"
+                if handler.name is not None:
+                    label += f" as {handler.name}"
+                handler_id = self._add_node(handler, NodeKind.PROCESS, label)
+                self._connect([(try_id, "exception")], handler_id)
+                normal += self._block(handler.body, [(handler_id, None)])
+        finally:
+            if stmt.finalbody:
+                self._finally.pop()
+        if not stmt.finalbody:
+            return normal
+
+        result = self._finally_copy(stmt, normal, "finally")
+        # Loop transfers run their own copy of the finally body, then continue the transfer
+        # (which outer `finally` blocks and loops route in turn). A finally body that ends
+        # the path itself (e.g. its own `continue`) yields an empty frontier and overrides it.
+        for kind, pending, route in (
+            ("break", context.breaks, self._break),
+            ("continue", context.continues, self._continue),
+        ):
+            if pending:
+                saved = self._copy_suffix
+                self._copy_suffix += f"~{kind}"
+                try:
+                    route(self._finally_copy(stmt, pending, f"finally ({kind})"))
+                finally:
+                    self._copy_suffix = saved
+        return result
+
+    def _finally_copy(self, stmt: ast.Try | ast.TryStar, entry: Frontier, label: str) -> Frontier:
+        fin_id = self._add_node(stmt, NodeKind.PROCESS, label, suffix="~finally")
+        self._connect(entry, fin_id)
+        return self._block(stmt.finalbody, [(fin_id, None)])
 
     def _if(self, stmt: ast.If, frontier: Frontier) -> Frontier:
         node_id = self._add_node(stmt, NodeKind.DECISION, f"if {ast.unparse(stmt.test)}")
