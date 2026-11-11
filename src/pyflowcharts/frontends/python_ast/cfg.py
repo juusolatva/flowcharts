@@ -92,8 +92,39 @@ class CfgBuilder:
                 return self._terminal(stmt, frontier, NodeKind.RETURN, label)
             case ast.Raise():
                 return self._terminal(stmt, frontier, NodeKind.RAISE, ast.unparse(stmt))
+            case ast.If():
+                return self._if(stmt, frontier)
+            case ast.Match():
+                return self._match(stmt, frontier)
             case _:
                 return self._chain(stmt, frontier, NodeKind.PROCESS, ast.unparse(stmt))
+
+    def _if(self, stmt: ast.If, frontier: Frontier) -> Frontier:
+        node_id = self._add_node(stmt, NodeKind.DECISION, f"if {ast.unparse(stmt.test)}")
+        self._connect(frontier, node_id)
+        out = self._block(stmt.body, [(node_id, "True")])
+        if stmt.orelse:
+            return out + self._block(stmt.orelse, [(node_id, "False")])
+        return out + [(node_id, "False")]
+
+    def _match(self, stmt: ast.Match, frontier: Frontier) -> Frontier:
+        node_id = self._add_node(stmt, NodeKind.DECISION, f"match {ast.unparse(stmt.subject)}")
+        self._connect(frontier, node_id)
+        out: Frontier = []
+        for case in stmt.cases:
+            label = f"case {ast.unparse(case.pattern)}"
+            if case.guard is not None:
+                label += f" if {ast.unparse(case.guard)}"
+            out += self._block(case.body, [(node_id, self._label(label))])
+        last = stmt.cases[-1]
+        irrefutable = (
+            last.guard is None
+            and isinstance(last.pattern, ast.MatchAs)
+            and last.pattern.pattern is None
+        )
+        if not irrefutable:
+            out.append((node_id, "no match"))
+        return out
 
     def _shows(self, stmt: ast.Assign | ast.AugAssign | ast.AnnAssign) -> bool:
         return self.options.show_variables or _contains_call(stmt.value)
@@ -120,9 +151,7 @@ class CfgBuilder:
         label: str,
         suffix: str = "",
     ) -> str:
-        node_id = (
-            f"{self.qualname}#L{stmt.lineno}C{stmt.col_offset}{suffix}{self._copy_suffix}"
-        )
+        node_id = f"{self.qualname}#L{stmt.lineno}C{stmt.col_offset}{suffix}{self._copy_suffix}"
         location = None if suffix else location_of(stmt)
         self.nodes.append(Node(node_id, kind, self._label(label), location))
         return node_id
