@@ -48,6 +48,16 @@ def _is_docstring(stmt: ast.stmt) -> bool:
     )
 
 
+def _is_skipped(stmt: ast.stmt) -> bool:
+    """Statements that never get a node (a leading docstring is stripped separately)."""
+    match stmt:
+        case ast.Pass() | ast.Global() | ast.Nonlocal():
+            return True
+        case ast.Expr(value=ast.Constant(value=value)) if value is Ellipsis:
+            return True
+    return False
+
+
 def _contains_call(node: ast.AST | None) -> bool:
     return node is not None and any(isinstance(n, ast.Call) for n in ast.walk(node))
 
@@ -70,6 +80,7 @@ class CfgBuilder:
         self.qualname = qualname
         self.options = options
         self.source = source
+        self._reveal = False  # show hidden assignments, because the block has nothing else
         self.nodes: list[Node] = []
         self.edges: list[Edge] = []
         self._end_id = f"{qualname}#end"
@@ -91,17 +102,31 @@ class CfgBuilder:
     # -- statement handling -------------------------------------------------
 
     def _block(self, stmts: list[ast.stmt], frontier: Frontier) -> Frontier:
-        for stmt in stmts:
-            frontier = self._stmt(stmt, frontier)
+        saved = self._reveal
+        # A block made only of hidden assignments would look empty (e.g. an `if` whose True
+        # and False edges meet at the same node), so it shows them anyway.
+        self._reveal = not any(self._visible(stmt) for stmt in stmts)
+        try:
+            for stmt in stmts:
+                frontier = self._stmt(stmt, frontier)
+        finally:
+            self._reveal = saved
         return frontier
+
+    def _visible(self, stmt: ast.stmt) -> bool:
+        """Whether the statement gets a node under the normal (non-reveal) rules."""
+        match stmt:
+            case ast.Assign() | ast.AugAssign() | ast.AnnAssign():
+                return self.options.show_variables or _contains_call(stmt.value)
+        return not _is_skipped(stmt)
 
     def _stmt(self, stmt: ast.stmt, frontier: Frontier) -> Frontier:
         match stmt:
-            case ast.Pass() | ast.Global() | ast.Nonlocal():
+            case _ if _is_skipped(stmt):
                 return frontier
-            case ast.Expr(value=ast.Constant(value=value)) if value is Ellipsis:
-                return frontier
-            case ast.Assign() | ast.AugAssign() | ast.AnnAssign() if not self._shows(stmt):
+            case ast.Assign() | ast.AugAssign() | ast.AnnAssign() if not (
+                self._reveal or self._visible(stmt)
+            ):
                 return frontier
             case ast.Return(value=value):
                 if value is None or not self.options.show_returns:
@@ -267,9 +292,6 @@ class CfgBuilder:
         if not irrefutable:
             out.append((node_id, "no match"))
         return out
-
-    def _shows(self, stmt: ast.Assign | ast.AugAssign | ast.AnnAssign) -> bool:
-        return self.options.show_variables or _contains_call(stmt.value)
 
     # -- labels ---------------------------------------------------------------
 

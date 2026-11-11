@@ -69,7 +69,7 @@ Rules:
 - `return` and `raise` go to `end` and end the current path.
 - A nested `def`/`class` becomes a process node in its parent, and nested functions also get their own chart.
 - Skipped statements (no node): a docstring as the first statement, `pass`, `...`, `global`, `nonlocal`. Paths flow through them.
-- Variable assignments (`=`, `+=`, annotated) get nodes only with `--variables`, **unless** the assigned value contains a call (then they're always shown).
+- Variable assignments (`=`, `+=`, annotated) get nodes only with `--variables`, **unless** the assigned value contains a call (then they're always shown). They're also shown when every statement in a block (a function body, branch, case, loop body, `with`/`try` body, handler or `finally`) would otherwise get no node, so a branch never looks empty just because its assignments are hidden. This is decided per block.
 - Code after `return`/`raise`/`break`/`continue` (unreachable) is still emitted as nodes with no incoming edges.
 - Any statement type without its own rule becomes a process node labelled with its source text.
 

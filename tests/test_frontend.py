@@ -204,3 +204,39 @@ def test_labels_keep_source_text():
 def test_multiline_labels_fall_back_to_unparse():
     c = chart_of("def f():\n    g(1,  # note\n      0x2)\n")
     assert "g(1, 2)" in {n.label for n in c.nodes}
+
+
+def test_block_of_only_hidden_assignments_is_shown():
+    c = chart_of("""
+        def f(memo, xs):
+            if memo is None:
+                memo = {}
+            for x in xs:
+                total += x
+            return memo
+    """)
+    assert {
+        ("if memo is None", "memo = {}", "True"),
+        ("memo = {}", "for x in xs", None),
+        ("if memo is None", "for x in xs", "False"),
+        ("for x in xs", "total += x", "next"),
+        ("total += x", "for x in xs", None),
+    } <= flow(c)
+
+
+def test_reveal_applies_per_block():
+    c = chart_of("""
+        def f(a):
+            if a:
+                n = 0
+                g()
+            else:
+                n = 1
+    """)
+    labels = {n.label for n in c.nodes}
+    assert "n = 1" in labels and "n = 0" not in labels
+
+
+def test_function_body_of_only_assignments_is_shown():
+    c = chart_of("def f(self):\n    self.x = 1\n    self.y = 2\n")
+    assert {("self.x = 1", "self.y = 2", None), ("self.y = 2", "end", None)} <= flow(c)
