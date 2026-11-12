@@ -153,3 +153,44 @@ def test_write_failure_does_not_stop_other_outputs(tmp_path, capsys):
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "mermaid"]) == 1
     assert "cannot write" in capsys.readouterr().err
     assert (tmp_path / "o/m.json").exists() and (tmp_path / "o/m/g.mmd").exists()
+
+
+BROKEN = "def good():\n    return 1\n\ndef broken(:\n    pass\n"
+
+
+def test_skipped_function_warns_exits_1_and_writes_the_rest(tmp_path, capsys):
+    src = write(tmp_path, "m.py", BROKEN)
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "mermaid"]) == 1
+    expected = f"{src}:4: warning: syntax error in 'broken'; function skipped"
+    assert expected in capsys.readouterr().err
+    doc = from_json((tmp_path / "o/m.json").read_text())
+    assert [c.qualname for c in doc.functions] == ["good"]
+    assert (tmp_path / "o/m/good.mmd").exists()
+
+
+def test_all_functions_skipped_writes_empty_json_without_no_functions_warning(tmp_path, capsys):
+    src = write(tmp_path, "m.py", "def broken(:\n    pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
+    err = capsys.readouterr().err
+    assert "function skipped" in err and "no functions found" not in err
+    assert from_json((tmp_path / "o/m.json").read_text()).functions == []
+
+
+def test_function_selection_with_skipped_names(tmp_path, capsys):
+    src = write(tmp_path, "m.py", BROKEN)
+    assert main([str(src), "-o", str(tmp_path / "o1"), "-f", "json", "--function", "good"]) == 0
+    assert capsys.readouterr().err == ""
+    args = ["-o", str(tmp_path / "o2"), "-f", "json", "--function", "good", "broken"]
+    assert main([str(src), *args]) == 1
+    assert "function skipped" in capsys.readouterr().err
+    doc = from_json((tmp_path / "o2/m.json").read_text())
+    assert [c.qualname for c in doc.functions] == ["good"]
+    assert main([str(src), "-o", str(tmp_path / "o3"), "--function", "zzz"]) == 1
+    err = capsys.readouterr().err
+    assert "available: good, broken (skipped)" in err and not (tmp_path / "o3").exists()
+
+
+def test_outside_error_warns_even_with_function_filter(tmp_path, capsys):
+    src = write(tmp_path, "m.py", "x = = 1\ndef good():\n    return 1\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "good"]) == 1
+    assert "syntax error outside functions" in capsys.readouterr().err

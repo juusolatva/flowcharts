@@ -51,35 +51,31 @@ def main(argv: Sequence[str] | None = None) -> int:
         return EXIT_ERROR
 
     status = EXIT_OK
-    documents: list[tuple[Path, Document]] = []
+    results: list[tuple[Path, ParseResult]] = []
     for path in files:
         try:
-            result = _parse_file(path, options)
+            results.append((path, _parse_file(path, options)))
         except SourceError as err:
             print(err, file=sys.stderr)
             status = EXIT_ERROR
-            continue
+
+    if args.function:
+        results = _select(results, args.function)
+        if results is None:
+            return EXIT_ERROR
+
+    documents: list[tuple[Path, Document]] = []
+    for path, result in results:
         for warning in result.warnings:
             print(warning, file=sys.stderr)
             status = EXIT_ERROR
+        skipped_any = any(w.qualname is not None for w in result.warnings)
+        if not result.document.functions and not skipped_any:
+            print(f"warning: {path}: no functions found", file=sys.stderr)
         documents.append((path, result.document))
-
-    if args.function:
-        available = [chart.qualname for _, doc in documents for chart in doc.functions]
-        unknown = [name for name in dict.fromkeys(args.function) if name not in available]
-        if unknown:
-            names = ", ".join(repr(name) for name in unknown)
-            listing = ", ".join(available) or "(none)"
-            print(f"error: unknown function {names}; available: {listing}", file=sys.stderr)
-            return EXIT_ERROR
-        wanted = set(args.function)
-        for _, doc in documents:
-            doc.functions = [chart for chart in doc.functions if chart.qualname in wanted]
 
     writer = _Writer(args.output, formats)
     for path, doc in documents:
-        if not doc.functions:
-            print(f"warning: {path}: no functions found", file=sys.stderr)
         writer.write(doc, path.stem)
 
     if writer.write_failed:
@@ -167,6 +163,34 @@ def _stem_collision(paths: list[Path]) -> tuple[Path, Path] | None:
             return by_stem[path.stem], path
         by_stem[path.stem] = path
     return None
+
+
+def _select(
+    results: list[tuple[Path, ParseResult]], names: list[str]
+) -> list[tuple[Path, ParseResult]] | None:
+    """Keep only the charts named by ``--function`` (and the warnings that concern them).
+
+    Skipped functions count as known names. Returns ``None`` after reporting unknown ones.
+    """
+    available: list[str] = []
+    for _, result in results:
+        available += [chart.qualname for chart in result.document.functions]
+        available += [f"{w.qualname} (skipped)" for w in result.warnings if w.qualname]
+    known = {name.removesuffix(" (skipped)") for name in available}
+    unknown = [name for name in dict.fromkeys(names) if name not in known]
+    if unknown:
+        shown = ", ".join(repr(name) for name in unknown)
+        listing = ", ".join(available) or "(none)"
+        print(f"error: unknown function {shown}; available: {listing}", file=sys.stderr)
+        return None
+    wanted = set(names)
+    selected = []
+    for path, result in results:
+        functions = [c for c in result.document.functions if c.qualname in wanted]
+        warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
+        document = Document(result.document.source, result.document.language, functions)
+        selected.append((path, ParseResult(document, warnings)))
+    return selected
 
 
 def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
