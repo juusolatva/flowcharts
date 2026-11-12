@@ -158,6 +158,14 @@ class ChartBuilder:
         else:
             self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
 
+    def route_exception(self, frontier: Frontier) -> None:
+        """Continue an exception that has finished its ``finally`` body: into the enclosing
+        handlers or finally, else to ``end`` (it propagates out of the function)."""
+        if self.scopes:
+            self.scopes[-1].attach(self, frontier)
+        else:
+            self.connect(frontier, self.end_id)
+
     def _pending_finally(self) -> FinallyContext | None:
         """The ``try … finally`` a loop transfer must pass through, if it is inside the loop."""
         if self.pending and self.pending[-1].loop_depth == len(self.loops):

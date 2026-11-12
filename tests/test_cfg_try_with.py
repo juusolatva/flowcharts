@@ -37,6 +37,14 @@ def test_try_except_else_finally():
         ("finally", "cleanup()", None),
         ("cleanup()", "return data", None),
         ("return data", "end", None),
+        ("except (OSError, ValueError) as e", "finally (exception)", "exception"),
+        ("log(e)", "finally (exception)", "exception"),
+        ("return None", "finally (exception)", "exception"),
+        ("except Exception", "finally (exception)", "exception"),
+        ("raise", "finally (exception)", "exception"),
+        ("use(data)", "finally (exception)", "exception"),
+        ("finally (exception)", "cleanup()", None),
+        ("cleanup()", "end", None),
     }
     assert any(n.id.endswith("~finally") for n in c.nodes)
 
