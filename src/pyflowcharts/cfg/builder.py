@@ -104,7 +104,10 @@ class ChartBuilder:
                 self.connect(frontier, node_id)
                 if kind is NodeKind.RAISE and self.scopes:
                     return []  # its exception edges (added by add_node) are its exits
-                self.connect([(node_id, None)], self.end_id)
+                if kind is NodeKind.RETURN:
+                    self.route_return([(node_id, None)])
+                else:
+                    self.connect([(node_id, None)], self.end_id)
                 return []
             case Branch():
                 return self._branch(stmt, frontier)
@@ -159,6 +162,14 @@ class ChartBuilder:
             pending.continues.extend(frontier)
         else:
             self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
+
+    def route_return(self, frontier: Frontier) -> None:
+        """A ``return`` runs every pending ``finally`` body (at any loop depth) on its
+        way to ``end``."""
+        if self.pending:
+            self.pending[-1].returns.extend(frontier)
+        else:
+            self.connect(frontier, self.end_id)
 
     def route_exception(self, frontier: Frontier) -> None:
         """Continue an exception that has finished its ``finally`` body: into the enclosing

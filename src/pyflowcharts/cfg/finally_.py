@@ -76,13 +76,15 @@ def emit_try(builder: ChartBuilder, stmt: Try, frontier: Frontier) -> Frontier:
     if not has_finally:
         return normal
 
-    result = _finally_copy(builder, stmt, normal, "finally")
+    # Every copy, the plain one included, is drawn only when some path reaches it.
+    result = _finally_copy(builder, stmt, normal, "finally") if normal else []
     # Transfers run their own copy of the finally body, then continue the transfer (which
     # outer `finally` blocks, loops and handlers route in turn). A finally body that ends
     # the path itself (e.g. its own `continue`) yields an empty frontier and overrides it.
     routes: tuple[tuple[str, Frontier, Callable[[Frontier], None]], ...] = (
         ("break", context.breaks, partial(builder.route_break, loc=stmt.loc)),
         ("continue", context.continues, partial(builder.route_continue, loc=stmt.loc)),
+        ("return", context.returns, builder.route_return),
         ("exception", context.exceptions, builder.route_exception),
     )
     for kind, pending, route in routes:

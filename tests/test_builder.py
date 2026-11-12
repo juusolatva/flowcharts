@@ -153,7 +153,8 @@ def test_try_except_else_finally():
         ("try", "load()", None),
         ("load()", "except E", "exception"),
         ("except E", "return", None),
-        ("return", "end", None),
+        ("return", "finally (return)", None),
+        ("finally (return)", "cleanup()", None),
         ("load()", "use()", None),
         ("use()", "finally", None),
         ("finally", "cleanup()", None),
@@ -283,6 +284,43 @@ def test_raise_in_finally_body_goes_to_end():
     f = flow(chart((try_stmt(2, (Step("a()", at(3)),), finalbody=fin),)))
     assert ("raise E", "end", None) in f
     assert not any(s == "raise E" and lbl == "exception" for s, _, lbl in f)
+
+
+def ret(line, label="return 1"):
+    return Terminal(NodeKind.RETURN, label, at(line))
+
+
+def test_return_runs_finally_return_copy_and_omits_plain_copy():
+    c = chart((try_stmt(2, (ret(3),), finalbody=(Step("c()", at(5)),)),))
+    f = flow(c)
+    assert {
+        ("return 1", "finally (return)", None),
+        ("finally (return)", "c()", None),
+        ("c()", "end", None),
+    } <= f
+    assert ("return 1", "end", None) not in f and "finally" not in {n.label for n in c.nodes}
+    assert {"f#L2C4~finally~return@L2C4", "f#L5C4~return@L2C4"} <= {n.id for n in c.nodes}
+
+
+def test_return_through_two_nested_finally_blocks():
+    inner = try_stmt(3, (ret(4),), finalbody=(Step("ci()", at(6)),))
+    outer = try_stmt(2, (inner,), finalbody=(Step("co()", at(8)),))
+    c = chart((outer,))
+    f = flow(c)
+    assert {("ci()", "finally (return)", None), ("co()", "end", None)} <= f
+    assert {"f#L6C4~return@L3C4", "f#L8C4~return@L2C4"} <= {n.id for n in c.nodes}
+
+
+def test_return_in_loop_inside_try_finally():
+    loop = Loop("for x in xs", at(3), "next", "done", (ret(4, "return x"),), ())
+    f = flow(chart((try_stmt(2, (loop,), finalbody=(Step("c()", at(6)),)),)))
+    assert ("return x", "finally (return)", None) in f and ("c()", "end", None) in f
+    assert ("c()", "for x in xs", None) not in f
+
+
+def test_finally_body_return_overrides_pending_return():
+    f = flow(chart((try_stmt(2, (ret(3),), finalbody=(ret(5, "return 2"),)),)))
+    assert ("return 2", "end", None) in f and ("return 1", "end", None) not in f
 
 
 def test_break_runs_its_own_finally_copy():
