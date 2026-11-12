@@ -61,7 +61,7 @@ Methods are named `Class.method` and nested functions `outer.inner`.
 | Code | Meaning |
 |---|---|
 | 0 | Success (a file with no functions only produces a warning) |
-| 1 | A file could not be read or parsed, an output file could not be written, an unknown `--function`, or two inputs share a file name |
+| 1 | A function was skipped because of a syntax error (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, an unknown `--function`, or two inputs share a file name |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
 ## How code maps to the chart
@@ -77,6 +77,10 @@ Methods are named `Class.method` and nested functions `outer.inner`.
 
 `break`/`continue` inside `try … finally` pass through a copy of the finally body (labelled `finally (break)` / `finally (continue)`) on their way to the loop exit or head.
 
+### Syntax errors
+
+A function that does not parse is skipped with a warning such as `mod.py:12: warning: syntax error in 'broken'; function skipped`, and every other function in the file is still charted. A syntax error outside every function gives `warning: syntax error outside functions; nearby code may be missing`. Either warning makes the exit code 1. `--function` accepts skipped names, so selecting only valid functions gives exit 0.
+
 ### Known simplifications
 
 - Exceptions are drawn as edges from the `try` node, not from each statement in the body.
@@ -91,4 +95,4 @@ uv run ruff check      # lint
 uv run ruff format     # format
 ```
 
-The architecture is frontend (Python `ast`) → language-neutral IR → backends (JSON, Graphviz, Mermaid). See `AGENTS.md` for the project rules and `docs/superpowers/specs/` for the design.
+The architecture is frontend (tree-sitter, Python only for now) → language-neutral CFG engine → IR → backends (JSON, Graphviz, Mermaid). See `AGENTS.md` for the project rules and `docs/superpowers/specs/` for the design.
