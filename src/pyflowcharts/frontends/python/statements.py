@@ -73,6 +73,8 @@ def _is_docstring(stmt: Node) -> bool:
     if stmt.type != "expression_statement" or len(children) != 1:
         return False
     value = children[0]
+    while value.type == "parenthesized_expression" and len(_named(value)) == 1:
+        value = _named(value)[0]
     strings = value.named_children if value.type == "concatenated_string" else [value]
     return all(s.type == "string" and _is_plain_string(s) for s in strings)
 
@@ -230,13 +232,12 @@ class _Converter:
         ]
         arms = []
         for case in cases:
-            patterns = [c for c in case.named_children if c.type == "case_pattern"]
-            label = "case " + ", ".join(self.src.source_text(p) for p in patterns)
+            label = "case " + self._list_text(_between(case, "case", ("guard", ":")))
             if (guard := case.child_by_field_name("guard")) is not None:
                 label += f" {self.src.source_text(guard)}"
             arms.append(Arm(label, self.block(case.child_by_field_name("consequence"))))
         default = None if cases and _irrefutable(cases[-1]) else "no match"
-        subject = ", ".join(self.src.source_text(c) for c in node.children_by_field_name("subject"))
+        subject = self._list_text(_between(node, "match", (":",)))
         return Branch(f"match {subject}", self.src.location(node), tuple(arms), default)
 
     def _try(self, node: Node) -> Try:
@@ -269,6 +270,16 @@ class _Converter:
         block = next((c for c in clause.children if c.type == "block"), None)
         return Handler(label, self.src.location(clause), self.block(block))
 
+    def _list_text(self, nodes: list[Node]) -> str:
+        """Source text of a comma-separated list, keeping a trailing comma (``x,``)."""
+        parts: list[str] = []
+        for node in nodes:
+            if node.type == ",":
+                parts[-1] += ","
+            elif node.type not in _EXTRAS:
+                parts.append(self.src.source_text(node))
+        return " ".join(parts)
+
     def _body(self, node: Node) -> Block:
         return self.block(node.child_by_field_name("body"))
 
@@ -280,6 +291,21 @@ class _Converter:
 
     def _text(self, node: Node, field: str) -> str:
         return _field_text(node, field, self.src)
+
+
+def _between(node: Node, after: str, until: tuple[str, ...]) -> list[Node]:
+    """The children after the ``after`` keyword, up to the first child whose type (or field
+    name) is in ``until``."""
+    out: list[Node] = []
+    started = False
+    for i, child in enumerate(node.children):
+        if not started:
+            started = child.type == after
+            continue
+        if child.type in until or (node.field_name_for_child(i) or "") in until:
+            break
+        out.append(child)
+    return out
 
 
 def _irrefutable(case: Node) -> bool:

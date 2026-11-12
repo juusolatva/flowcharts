@@ -174,3 +174,13 @@ def test_comment_before_docstring_still_drops_it():
 def test_return_value_after_line_continuation():
     c = chart("def f():\n    return \\\n        42\n")
     assert "return 42" in labels(c)
+
+
+def test_parenthesised_docstring_is_dropped():
+    c = chart("def f():\n    ('doc')\n    x = 1\n")
+    assert labels(c) == {"def f()", "end", "x = 1"}
+
+
+def test_trailing_commas_survive_in_match_labels():
+    f = flow(chart("def f(x):\n    match x,:\n        case y,:\n            g()\n"))
+    assert ("match x,", "g()", "case y,") in f
