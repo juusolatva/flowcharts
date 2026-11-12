@@ -78,6 +78,22 @@ def _contains_call(node: Node | None) -> bool:
     return any(_contains_call(child) for child in node.children)
 
 
+def _calls_in_value(assignment: Node) -> bool:
+    """Whether the assigned value contains a call. Chained assignments (``a = b = v``) nest
+    on the right, and only the final value counts, as with ``ast``."""
+    value = assignment.child_by_field_name("right")
+    while value is not None and value.type == "assignment":
+        value = value.child_by_field_name("right")
+    return _contains_call(value)
+
+
+def _is_type_alias(node: Node) -> bool:
+    """A real ``type X = ...`` statement has a name (or ``Name[T]``) on the left."""
+    left = node.child_by_field_name("left")
+    target = left.named_children[0] if left is not None and left.named_child_count else None
+    return target is not None and target.type in ("identifier", "generic_type")
+
+
 def _field_text(node: Node, field: str, src: Source) -> str:
     child = node.child_by_field_name(field)
     return src.source_text(child) if child is not None else ""
@@ -144,6 +160,9 @@ class _Converter:
                 return Step(signature_label(node, self.src, self.options), loc)
             case "class_definition":
                 return Step(f"class {self._text(node, 'name')}", loc)
+            case "type_alias_statement" if not _is_type_alias(node):
+                # The grammar reads `type(x).a = v` as a PEP 695 alias; it is an assignment.
+                return Step(self.src.source_text(node), loc, hidden=not _calls_in_value(node))
             case "break_statement":
                 return Break(loc)
             case "continue_statement":
@@ -158,8 +177,7 @@ class _Converter:
             case "ellipsis":
                 return None
             case "assignment" | "augmented_assignment":
-                hidden = not _contains_call(inner.child_by_field_name("right"))
-                return Step(self.src.source_text(node), loc, hidden=hidden)
+                return Step(self.src.source_text(node), loc, hidden=not _calls_in_value(inner))
         return Step(self.src.source_text(node), loc)
 
     def _if(self, node: Node) -> Branch:
@@ -200,8 +218,7 @@ class _Converter:
         arms = []
         for case in cases:
             patterns = [c for c in case.named_children if c.type == "case_pattern"]
-            text = self.src.data[patterns[0].start_byte : patterns[-1].end_byte].decode()
-            label = f"case {' '.join(text.split())}" if "\n" in text else f"case {text}"
+            label = "case " + ", ".join(self.src.source_text(p) for p in patterns)
             if (guard := case.child_by_field_name("guard")) is not None:
                 label += f" {self.src.source_text(guard)}"
             arms.append(Arm(label, self.block(case.child_by_field_name("consequence"))))

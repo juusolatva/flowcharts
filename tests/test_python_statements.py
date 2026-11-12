@@ -125,3 +125,18 @@ def test_signature_label_keeps_source_spacing():
     assert c.nodes[0].label == "def f(a: int, /, b=2, *args, c, d: str = 'x', **kw) -> bool"
     hidden = chart("async def f(a):\n    pass\n", show_parameters=False)
     assert hidden.nodes[0].label == "async def f(...)"
+
+
+def test_chained_assignment_looks_only_at_the_final_value():
+    c = chart("def f():\n    a[g()] = b[h()] = v\n    x = y = k()\n")
+    assert labels(c) == {"def f()", "end", "x = y = k()"}
+
+
+def test_type_call_target_is_an_assignment_not_a_type_alias():
+    c = chart("def f(m):\n    type(m).a = v\n    type(m).b = g()\n    type Alias = list[int]\n")
+    assert labels(c) == {"def f(m)", "end", "type(m).b = g()", "type Alias = list[int]"}
+
+
+def test_multiline_case_pattern_label():
+    src = "def f(x):\n    match x:\n        case (\n            A\n            | B\n        ):\n            a()\n"
+    assert ("match x", "a()", "case (A | B)") in flow(chart(src))
