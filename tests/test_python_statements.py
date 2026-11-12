@@ -164,3 +164,13 @@ def test_trailing_comma_case_is_a_sequence_pattern():
 def test_concatenated_fstring_is_not_a_docstring():
     c = chart("def f():\n    'prefix' f'{g()}'\n")
     assert "'prefix' f'{g()}'" in labels(c)
+
+
+def test_comment_before_docstring_still_drops_it():
+    c = chart("def f():\n    # note\n    'doc'\n    x = 1\n")
+    assert labels(c) == {"def f()", "end", "x = 1"}
+
+
+def test_return_value_after_line_continuation():
+    c = chart("def f():\n    return \\\n        42\n")
+    assert "return 42" in labels(c)
