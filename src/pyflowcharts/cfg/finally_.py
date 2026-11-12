@@ -18,6 +18,8 @@ from pyflowcharts.ir import Edge, NodeKind
 if TYPE_CHECKING:
     from pyflowcharts.cfg.builder import ChartBuilder, Frontier
 
+EXCEPTION = "exception"  # the edge label of every exception path
+
 
 @dataclass
 class ExceptionScope:
@@ -28,12 +30,17 @@ class ExceptionScope:
     pending: Frontier | None
 
     def attach(self, builder: ChartBuilder, frontier: Frontier) -> None:
-        if self.handler_ids:
-            for source_id, label in frontier:
+        """Add an ``exception`` edge from each frontier node to every target. A node that
+        already has one (it raised itself and also ends a ``finally (exception)`` copy)
+        gets no duplicate."""
+        for source_id, _ in frontier:
+            if self.handler_ids:
                 for handler_id in self.handler_ids:
-                    builder.edges.append(Edge(source_id, handler_id, label))
-        elif self.pending is not None:
-            self.pending.extend(frontier)
+                    edge = Edge(source_id, handler_id, EXCEPTION)
+                    if edge not in builder.edges:
+                        builder.edges.append(edge)
+            elif self.pending is not None and (source_id, EXCEPTION) not in self.pending:
+                self.pending.append((source_id, EXCEPTION))
 
 
 @dataclass

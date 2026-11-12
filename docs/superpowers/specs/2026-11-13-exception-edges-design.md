@@ -43,7 +43,7 @@ Nested `try` inside a `try` body: inner body nodes point only at the inner handl
 Today a finally body is drawn once per path that runs it: `finally`, `finally (break)`, `finally (continue)`. Two copies are added, built with the same machinery (a pending frontier collected while the `try` is open, a copy drawn when it closes, and the copy's exit routed onward):
 
 - **`finally (return)`** collects the `return` nodes inside the `try`, at any loop depth (unlike `break`/`continue`, which only pass through a `finally` inside their loop). Its exit routes to the next enclosing pending `finally`, else to `end`.
-- **`finally (exception)`** collects the pending exception frontier described above. Its exit routes to the enclosing exception scope's targets (the frontier keeps its own edge labels, as break copies do), else to `end`. The copy is only created when at least one edge points at it.
+- **`finally (exception)`** collects the pending exception frontier described above. Its exit routes to the enclosing exception scope's targets as `exception` edges (the exit frontier's own labels are dropped, and a node that already has an `exception` edge to that target gets no second one), else to `end` with the frontier's own labels. The copy is only created when at least one edge points at it.
 
 A finally body that ends the path itself (its own `return`, `raise`, `break` or `continue`) still overrides the pending transfer, as today.
 
