@@ -48,6 +48,35 @@ CORPUS = {
                 finally:
                     b()
     """,
+    "return_and_raise_through_nested_finally": """
+        def f():
+            try:
+                try:
+                    if a:
+                        return 1
+                    raise E
+                except E:
+                    raise
+                finally:
+                    c1()
+            except F:
+                return 2
+            finally:
+                c2()
+    """,
+    "return_in_loop_in_try_finally_in_loop": """
+        def f():
+            while a:
+                try:
+                    for i in x:
+                        if i:
+                            return i
+                        if j:
+                            break
+                        continue
+                finally:
+                    c()
+    """,
     "nested_def_in_finally_copy": """
         def f():
             for i in x:
