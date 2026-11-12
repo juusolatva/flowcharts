@@ -7,7 +7,9 @@ to its own target (the next statement, the loop exit or the loop head).
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from functools import partial
 from typing import TYPE_CHECKING
 
 from pyflowcharts.cfg.model import Try
@@ -37,47 +39,59 @@ class ExceptionScope:
 @dataclass
 class FinallyContext:
     loop_depth: int  # len(builder.loops) when the `try` began
-    breaks: Frontier  # pending `break`s that must run the finally body first
-    continues: Frontier  # pending `continue`s that must run the finally body first
+    # Paths that must run the finally body first, one copy of it per kind.
+    breaks: Frontier = field(default_factory=list)
+    continues: Frontier = field(default_factory=list)
+    returns: Frontier = field(default_factory=list)
+    exceptions: Frontier = field(default_factory=list)
 
 
 def emit_try(builder: ChartBuilder, stmt: Try, frontier: Frontier) -> Frontier:
     try_id = builder.add_node(stmt.loc, NodeKind.PROCESS, "try")
     builder.connect(frontier, try_id)
-    context = FinallyContext(len(builder.loops), [], [])
-    if stmt.finalbody is not None:
+    context = FinallyContext(len(builder.loops))
+    has_finally = stmt.finalbody is not None
+    if has_finally:
         builder.pending.append(context)
     # Handler nodes are created after the body (to keep node order), but their IDs are
-    # known up front so body nodes can point at them.
+    # known up front so body nodes can point at them. Without handlers (so with a
+    # `finally`), body exceptions run the `finally (exception)` copy instead.
     handler_ids = [builder.node_id(handler.loc) for handler in stmt.handlers]
-    body_scope = ExceptionScope(handler_ids, None) if handler_ids else None
+    to_finally = ExceptionScope([], context.exceptions)
+    body_scope = ExceptionScope(handler_ids, None) if handler_ids else to_finally
+    # Exceptions in `else` and in handlers are not caught by this `try`: they run its
+    # finally copy if there is one, else they belong to the enclosing scope.
+    after_scope = to_finally if has_finally else None
     try:
         with builder.exception_scope(body_scope):
             normal = builder.block(stmt.body, [(try_id, None)])
-        normal = builder.block(stmt.orelse, normal)
-        for handler in stmt.handlers:
-            handler_id = builder.add_node(handler.loc, NodeKind.PROCESS, handler.label)
-            normal += builder.block(handler.body, [(handler_id, None)])
+        with builder.exception_scope(after_scope):
+            normal = builder.block(stmt.orelse, normal)
+            for handler in stmt.handlers:
+                handler_id = builder.add_node(handler.loc, NodeKind.PROCESS, handler.label)
+                normal += builder.block(handler.body, [(handler_id, None)])
     finally:
-        if stmt.finalbody is not None:
+        if has_finally:
             builder.pending.pop()
-    if stmt.finalbody is None:
+    if not has_finally:
         return normal
 
     result = _finally_copy(builder, stmt, normal, "finally")
-    # Loop transfers run their own copy of the finally body, then continue the transfer
-    # (which outer `finally` blocks and loops route in turn). A finally body that ends
+    # Transfers run their own copy of the finally body, then continue the transfer (which
+    # outer `finally` blocks, loops and handlers route in turn). A finally body that ends
     # the path itself (e.g. its own `continue`) yields an empty frontier and overrides it.
-    for kind, pending, route in (
-        ("break", context.breaks, builder.route_break),
-        ("continue", context.continues, builder.route_continue),
-    ):
+    routes: tuple[tuple[str, Frontier, Callable[[Frontier], None]], ...] = (
+        ("break", context.breaks, partial(builder.route_break, loc=stmt.loc)),
+        ("continue", context.continues, partial(builder.route_continue, loc=stmt.loc)),
+        ("exception", context.exceptions, builder.route_exception),
+    )
+    for kind, pending, route in routes:
         if pending:
             saved = builder.copy_suffix
             # Name the owning `try`, so copy paths through nested try blocks stay unique.
             builder.copy_suffix += f"~{kind}@L{stmt.loc.line}C{stmt.loc.column}"
             try:
-                route(_finally_copy(builder, stmt, pending, f"finally ({kind})"), stmt.loc)
+                route(_finally_copy(builder, stmt, pending, f"finally ({kind})"))
             finally:
                 builder.copy_suffix = saved
     return result
