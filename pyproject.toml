@@ -4,7 +4,11 @@ version = "0.1.0"
 description = "Generate control-flow flowcharts (JSON, DOT, SVG, PNG, Mermaid) from Python functions"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = ["graphviz>=0.21"]
+dependencies = [
+    "graphviz>=0.21",
+    "tree-sitter>=0.26",
+    "tree-sitter-python>=0.25",
+]
 
 [project.scripts]
 pyflowcharts = "pyflowcharts.cli:main"
