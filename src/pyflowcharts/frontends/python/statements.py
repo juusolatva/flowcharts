@@ -65,11 +65,13 @@ def _is_docstring(stmt: Node) -> bool:
     if stmt.type != "expression_statement" or stmt.named_child_count != 1:
         return False
     value = stmt.named_children[0]
-    if value.type == "concatenated_string":
-        value = value.named_children[0]
-    if value.type != "string":
-        return False
-    start = value.children[0].text or b""
+    strings = value.named_children if value.type == "concatenated_string" else [value]
+    return all(s.type == "string" and _is_plain_string(s) for s in strings)
+
+
+def _is_plain_string(string: Node) -> bool:
+    """Not an f-string or bytes (which ``ast`` does not treat as docstrings)."""
+    start = string.children[0].text or b""
     return not any(c in b"fFbB" for c in start.rstrip(b"'\""))
 
 
@@ -226,7 +228,7 @@ class _Converter:
                 label += f" {self.src.source_text(guard)}"
             arms.append(Arm(label, self.block(case.child_by_field_name("consequence"))))
         default = None if cases and _irrefutable(cases[-1]) else "no match"
-        subject = " ".join(self.src.source_text(c) for c in node.children_by_field_name("subject"))
+        subject = ", ".join(self.src.source_text(c) for c in node.children_by_field_name("subject"))
         return Branch(f"match {subject}", self.src.location(node), tuple(arms), default)
 
     def _try(self, node: Node) -> Try:
@@ -277,8 +279,8 @@ def _irrefutable(case: Node) -> bool:
     if case.child_by_field_name("guard") is not None:
         return False
     patterns = [c for c in case.named_children if c.type == "case_pattern"]
-    if len(patterns) != 1:
-        return False
+    if len(patterns) != 1 or any(c.type == "," for c in case.children):
+        return False  # `case y,:` is a one-element sequence pattern
     return _capture(patterns[0])
 
 

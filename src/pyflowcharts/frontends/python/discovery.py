@@ -95,13 +95,14 @@ def _parameter(node: Node, kind: ParamKind, src: Source) -> Parameter:
             kind = ParamKind.VAR_POSITIONAL
         case "dictionary_splat_pattern":
             kind = ParamKind.VAR_KEYWORD
-    annotation = default = None
-    for i, child in enumerate(node.children):
-        if child.type == "type":
-            annotation = src.source_text(child)
-        elif child.type == "=":
-            default = src.source_text(node.children[i + 1])
-    return Parameter(_target(target), annotation, default, kind)
+    annotation = node.child_by_field_name("type")
+    default = node.child_by_field_name("value")
+    return Parameter(
+        _target(target),
+        src.source_text(annotation) if annotation is not None else None,
+        src.source_text(default) if default is not None else None,
+        kind,
+    )
 
 
 def _target(node: Node) -> str:

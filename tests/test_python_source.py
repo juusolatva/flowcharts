@@ -60,3 +60,10 @@ def test_many_live_trees_with_long_identifiers():
         s = src(f"def {'f' * n}(): pass\ndef g(): pass\n")
         keep.append(s)
         assert s.location(s.tree.root_node.children[0]).end_column == n + 12
+
+
+def test_single_line_spacing_is_kept_as_written():
+    s = src("def f(x: tuple[int, ...] = .5):\n    from . import m\n")
+    func = s.tree.root_node.children[0]
+    assert s.source_text(func.child_by_field_name("parameters")) == "(x: tuple[int, ...] = .5)"
+    assert s.source_text(func.child_by_field_name("body").children[0]) == "from . import m"

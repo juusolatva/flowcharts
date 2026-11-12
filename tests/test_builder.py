@@ -216,3 +216,10 @@ def test_finally_continue_overrides_break():
     f = flow(chart((loop, Step("after()", at(7)))))
     assert ("finally (break)", "while True", None) in f
     assert not any(t == "after()" for _, t, _ in f)
+
+
+def test_stray_break_inside_try_finally_reports_the_break_line():
+    body = (Try(at(2), (Break(at(3)),), (), (), (Step("cleanup()", at(5)),)),)
+    with pytest.raises(StrayLoopTransfer) as e:
+        chart(body)
+    assert (e.value.kind, e.value.loc) == ("break", at(3))
