@@ -26,3 +26,8 @@ def test_mermaid_escapes_literal_hash():  # literal "#34;" in source must stay l
 def test_mermaid_shapes():
     out = to_mermaid(chart_of("def f(xs):\n    for x in xs:\n        raise E(x)\n"))
     assert '{{"for x in xs"}}' in out and '>"raise E(x)"]' in out
+
+
+def test_exception_edges_are_dashed():
+    out = to_mermaid(chart_of("def f():\n    try:\n        a()\n    except E:\n        h()\n"))
+    assert out.count('-.->|"exception"|') == 1 and '-->|"exception"|' not in out

@@ -50,7 +50,7 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 
 **IR and JSON format**
 - The IR holds no layout data (no x/y). Layout belongs to Graphviz or the GUI.
-- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`/`~continue@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax).
+- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax).
 - Output must be deterministic: the same input gives byte-identical JSON, DOT and Mermaid. No sets, hashes or timestamps in the output order.
 - Any change to the JSON shape requires bumping `SCHEMA_VERSION` in `ir.py`, updating `from_json`, and noting it in the spec.
 
@@ -72,7 +72,6 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 
 ## Known simplifications (not bugs)
 
-- Exception edges start at the `try` node, not at each statement in the body.
-- `return`/`raise` inside `try … finally` go straight to `end` without passing through the finally body. `break`/`continue` *do* pass through it, and that path must stay correct.
+- Handlers are assumed to catch whatever reaches them: the uncaught path out of a `try` with handlers is not drawn, and the `try` node itself has no exception edges.
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Module-level code, directory recursion and call graphs are out of scope for the MVP.

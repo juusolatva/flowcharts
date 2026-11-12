@@ -8,9 +8,11 @@ empty frontier.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
-from pyflowcharts.cfg.finally_ import FinallyContext, emit_try
+from pyflowcharts.cfg.finally_ import ExceptionScope, FinallyContext, emit_try
 from pyflowcharts.cfg.model import (
     Block,
     Branch,
@@ -67,6 +69,7 @@ class ChartBuilder:
         self.end_id = f"{qualname}#end"
         self.loops: list[LoopContext] = []
         self.pending: list[FinallyContext] = []
+        self.scopes: list[ExceptionScope] = []  # innermost last; nodes raise into scopes[-1]
         self.copy_suffix = ""
         self._reveal = False  # show hidden steps, because the block has nothing else
 
@@ -99,7 +102,12 @@ class ChartBuilder:
             case Terminal(kind=kind, label=label, loc=loc):
                 node_id = self.add_node(loc, kind, label)
                 self.connect(frontier, node_id)
-                self.connect([(node_id, None)], self.end_id)
+                if kind is NodeKind.RAISE and self.scopes:
+                    return []  # its exception edges (added by add_node) are its exits
+                if kind is NodeKind.RETURN:
+                    self.route_return([(node_id, None)])
+                else:
+                    self.connect([(node_id, None)], self.end_id)
                 return []
             case Branch():
                 return self._branch(stmt, frontier)
@@ -155,6 +163,23 @@ class ChartBuilder:
         else:
             self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
 
+    def route_return(self, frontier: Frontier) -> None:
+        """A ``return`` runs every pending ``finally`` body (at any loop depth) on its
+        way to ``end``."""
+        if self.pending:
+            self.pending[-1].returns.extend(frontier)
+        else:
+            self.connect(frontier, self.end_id)
+
+    def route_exception(self, frontier: Frontier) -> None:
+        """Continue an exception that has finished its ``finally`` body: into the enclosing
+        handlers or finally (as ``exception`` edges), else to ``end`` (it propagates out of
+        the function)."""
+        if self.scopes:
+            self.scopes[-1].propagate(self, frontier)
+        else:
+            self.connect(frontier, self.end_id)
+
     def _pending_finally(self) -> FinallyContext | None:
         """The ``try … finally`` a loop transfer must pass through, if it is inside the loop."""
         if self.pending and self.pending[-1].loop_depth == len(self.loops):
@@ -166,11 +191,30 @@ class ChartBuilder:
             raise StrayLoopTransfer(kind, loc)
         return self.loops[-1]
 
+    @contextmanager
+    def exception_scope(self, scope: ExceptionScope | None) -> Iterator[None]:
+        """Make ``scope`` the target of exception edges for the block; ``None`` keeps the
+        enclosing scope."""
+        if scope is None:
+            yield
+            return
+        self.scopes.append(scope)
+        try:
+            yield
+        finally:
+            self.scopes.pop()
+
     # -- graph primitives -----------------------------------------------------
 
+    def node_id(self, loc: SourceLocation, suffix: str = "") -> str:
+        return f"{self.qualname}#L{loc.line}C{loc.column}{suffix}{self.copy_suffix}"
+
     def add_node(self, loc: SourceLocation, kind: NodeKind, label: str, suffix: str = "") -> str:
-        node_id = f"{self.qualname}#L{loc.line}C{loc.column}{suffix}{self.copy_suffix}"
+        node_id = self.node_id(loc, suffix)
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
+        # Any statement can raise; synthetic (suffixed) nodes are not statements.
+        if not suffix and self.scopes:
+            self.scopes[-1].attach(self, [node_id])
         return node_id
 
     def connect(self, frontier: Frontier, target_id: str) -> None:
