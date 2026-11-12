@@ -8,9 +8,11 @@ empty frontier.
 
 from __future__ import annotations
 
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 
-from pyflowcharts.cfg.finally_ import FinallyContext, emit_try
+from pyflowcharts.cfg.finally_ import ExceptionScope, FinallyContext, emit_try
 from pyflowcharts.cfg.model import (
     Block,
     Branch,
@@ -67,6 +69,7 @@ class ChartBuilder:
         self.end_id = f"{qualname}#end"
         self.loops: list[LoopContext] = []
         self.pending: list[FinallyContext] = []
+        self.scopes: list[ExceptionScope] = []  # innermost last; nodes raise into scopes[-1]
         self.copy_suffix = ""
         self._reveal = False  # show hidden steps, because the block has nothing else
 
@@ -166,11 +169,30 @@ class ChartBuilder:
             raise StrayLoopTransfer(kind, loc)
         return self.loops[-1]
 
+    @contextmanager
+    def exception_scope(self, scope: ExceptionScope | None) -> Iterator[None]:
+        """Make ``scope`` the target of exception edges for the block; ``None`` keeps the
+        enclosing scope."""
+        if scope is None:
+            yield
+            return
+        self.scopes.append(scope)
+        try:
+            yield
+        finally:
+            self.scopes.pop()
+
     # -- graph primitives -----------------------------------------------------
 
+    def node_id(self, loc: SourceLocation, suffix: str = "") -> str:
+        return f"{self.qualname}#L{loc.line}C{loc.column}{suffix}{self.copy_suffix}"
+
     def add_node(self, loc: SourceLocation, kind: NodeKind, label: str, suffix: str = "") -> str:
-        node_id = f"{self.qualname}#L{loc.line}C{loc.column}{suffix}{self.copy_suffix}"
+        node_id = self.node_id(loc, suffix)
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
+        # Any statement can raise; synthetic (suffixed) nodes are not statements.
+        if not suffix and self.scopes:
+            self.scopes[-1].attach(self, [(node_id, "exception")])
         return node_id
 
     def connect(self, frontier: Frontier, target_id: str) -> None:

@@ -11,10 +11,27 @@ from dataclasses import dataclass
 from typing import TYPE_CHECKING
 
 from pyflowcharts.cfg.model import Try
-from pyflowcharts.ir import NodeKind
+from pyflowcharts.ir import Edge, NodeKind
 
 if TYPE_CHECKING:
     from pyflowcharts.cfg.builder import ChartBuilder, Frontier
+
+
+@dataclass
+class ExceptionScope:
+    """Where exceptions raised by the nodes of a block go: straight to handler nodes, or
+    into a pending frontier that later feeds a ``finally (exception)`` copy."""
+
+    handler_ids: list[str]
+    pending: Frontier | None
+
+    def attach(self, builder: ChartBuilder, frontier: Frontier) -> None:
+        if self.handler_ids:
+            for source_id, label in frontier:
+                for handler_id in self.handler_ids:
+                    builder.edges.append(Edge(source_id, handler_id, label))
+        elif self.pending is not None:
+            self.pending.extend(frontier)
 
 
 @dataclass
@@ -30,12 +47,16 @@ def emit_try(builder: ChartBuilder, stmt: Try, frontier: Frontier) -> Frontier:
     context = FinallyContext(len(builder.loops), [], [])
     if stmt.finalbody is not None:
         builder.pending.append(context)
+    # Handler nodes are created after the body (to keep node order), but their IDs are
+    # known up front so body nodes can point at them.
+    handler_ids = [builder.node_id(handler.loc) for handler in stmt.handlers]
+    body_scope = ExceptionScope(handler_ids, None) if handler_ids else None
     try:
-        normal = builder.block(stmt.body, [(try_id, None)])
+        with builder.exception_scope(body_scope):
+            normal = builder.block(stmt.body, [(try_id, None)])
         normal = builder.block(stmt.orelse, normal)
         for handler in stmt.handlers:
             handler_id = builder.add_node(handler.loc, NodeKind.PROCESS, handler.label)
-            builder.connect([(try_id, "exception")], handler_id)
             normal += builder.block(handler.body, [(handler_id, None)])
     finally:
         if stmt.finalbody is not None:
