@@ -24,12 +24,19 @@ from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.ir import ChartOptions, NodeKind
 
 _SKIPPED = frozenset({"pass_statement", "global_statement", "nonlocal_statement"})
+_EXTRAS = frozenset({"comment", "line_continuation"})
+
+
+def _named(node: Node) -> list[Node]:
+    """Named children without the grammar's extras (comments, line continuations), which
+    can appear anywhere, including before a statement's expression."""
+    return [c for c in node.named_children if c.type not in _EXTRAS]
 
 
 def convert_body(func: Node, src: Source, options: ChartOptions) -> Block:
     """The function body as model statements, with a leading docstring dropped."""
     block = func.child_by_field_name("body")
-    stmts = list(block.named_children) if block is not None else []
+    stmts = _named(block) if block is not None else []
     if stmts and _is_docstring(stmts[0]):
         stmts = stmts[1:]
     return _Converter(src, options).stmts(stmts)
@@ -62,9 +69,10 @@ def always_true(cond: str) -> bool:
 
 
 def _is_docstring(stmt: Node) -> bool:
-    if stmt.type != "expression_statement" or stmt.named_child_count != 1:
+    children = _named(stmt)
+    if stmt.type != "expression_statement" or len(children) != 1:
         return False
-    value = stmt.named_children[0]
+    value = children[0]
     strings = value.named_children if value.type == "concatenated_string" else [value]
     return all(s.type == "string" and _is_plain_string(s) for s in strings)
 
@@ -110,13 +118,11 @@ class _Converter:
         self.options = options
 
     def block(self, block: Node | None) -> Block:
-        return self.stmts(list(block.named_children)) if block is not None else ()
+        return self.stmts(_named(block)) if block is not None else ()
 
     def stmts(self, nodes: list[Node]) -> Block:
         out: list[Stmt] = []
         for node in nodes:
-            if node.type == "comment":
-                continue
             converted = self.stmt(node)
             if converted is not None:
                 out.append(converted)
@@ -130,7 +136,8 @@ class _Converter:
             case _ if node.type in _SKIPPED:
                 return None
             case "return_statement":
-                value = node.named_children[0] if node.named_child_count else None
+                values = _named(node)
+                value = values[0] if values else None
                 if value is None or not self.options.show_returns:
                     return Terminal(NodeKind.RETURN, "return", loc)
                 return Terminal(NodeKind.RETURN, f"return {self.src.source_text(value)}", loc)
@@ -177,7 +184,8 @@ class _Converter:
 
     def _expression(self, node: Node) -> Stmt | None:
         loc = self.src.location(node)
-        inner = node.named_children[0] if node.named_child_count == 1 else None
+        children = _named(node)
+        inner = children[0] if len(children) == 1 else None
         match inner.type if inner is not None else None:
             case "ellipsis":
                 return None
