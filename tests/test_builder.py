@@ -255,6 +255,36 @@ def test_try_finally_with_empty_body_draws_no_finally():
     assert "finally (exception)" not in labels and "finally" in labels
 
 
+def test_raise_in_try_body_goes_to_handler_not_end():
+    body = (
+        try_stmt(
+            2, (Terminal(NodeKind.RAISE, "raise E", at(3)),), (Handler("except E", at(4), ()),)
+        ),
+    )
+    f = flow(chart(body))
+    assert ("raise E", "except E", "exception") in f and ("raise E", "end", None) not in f
+
+
+def test_reraise_in_handler_goes_outward():
+    reraise = (Terminal(NodeKind.RAISE, "raise", at(6)),)
+    inner = try_stmt(3, (Step("a()", at(4)),), (Handler("except I", at(5), reraise),))
+    outer = try_stmt(2, (inner,), (Handler("except O", at(7), ()),))
+    f = flow(chart((outer,)))
+    assert ("raise", "except O", "exception") in f and ("raise", "end", None) not in f
+
+
+def test_raise_outside_try_goes_to_end():
+    f = flow(chart((Terminal(NodeKind.RAISE, "raise E", at(2)),)))
+    assert ("raise E", "end", None) in f
+
+
+def test_raise_in_finally_body_goes_to_end():
+    fin = (Terminal(NodeKind.RAISE, "raise E", at(5)),)
+    f = flow(chart((try_stmt(2, (Step("a()", at(3)),), finalbody=fin),)))
+    assert ("raise E", "end", None) in f
+    assert not any(s == "raise E" and lbl == "exception" for s, _, lbl in f)
+
+
 def test_break_runs_its_own_finally_copy():
     inner = (
         Branch("if x", at(4), (Arm("True", (Break(at(5)),)),), "False"),

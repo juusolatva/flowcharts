@@ -31,7 +31,6 @@ def test_try_except_else_finally():
         ("log(e)", "return None", None),
         ("return None", "end", None),
         ("except Exception", "raise", None),
-        ("raise", "end", None),
         ("data = load(path)", "use(data)", None),
         ("use(data)", "finally", None),
         ("finally", "cleanup()", None),
