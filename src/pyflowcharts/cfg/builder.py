@@ -101,8 +101,16 @@ class ChartBuilder:
                 return []
             case Branch():
                 return self._branch(stmt, frontier)
-            case Loop() | Try() | Break() | Continue():
-                raise NotImplementedError(type(stmt).__name__)
+            case Loop():
+                return self._loop(stmt, frontier)
+            case Break(loc=loc):
+                self.route_break(frontier, loc)
+                return []
+            case Continue(loc=loc):
+                self.route_continue(frontier, loc)
+                return []
+            case Try():
+                raise NotImplementedError("Try")
         raise TypeError(f"unknown statement {stmt!r}")
 
     def _branch(self, stmt: Branch, frontier: Frontier) -> Frontier:
@@ -114,6 +122,31 @@ class ChartBuilder:
         if stmt.default is not None:
             out.append((node_id, stmt.default))
         return out
+
+    def _loop(self, stmt: Loop, frontier: Frontier) -> Frontier:
+        node_id = self.add_node(stmt.loc, NodeKind.LOOP, stmt.label)
+        self.connect(frontier, node_id)
+        context = LoopContext(node_id, [])
+        self.loops.append(context)
+        try:
+            body_end = self.block(stmt.body, [(node_id, stmt.enter)])
+        finally:
+            self.loops.pop()
+        self.connect(body_end, node_id)
+        out: Frontier = [(node_id, stmt.exit)] if stmt.exit is not None else []
+        out = self.block(stmt.orelse, out)
+        return out + context.breaks
+
+    def route_break(self, frontier: Frontier, loc: SourceLocation) -> None:
+        self._innermost_loop("break", loc).breaks.extend(frontier)
+
+    def route_continue(self, frontier: Frontier, loc: SourceLocation) -> None:
+        self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
+
+    def _innermost_loop(self, kind: str, loc: SourceLocation) -> LoopContext:
+        if not self.loops:
+            raise StrayLoopTransfer(kind, loc)
+        return self.loops[-1]
 
     # -- graph primitives -----------------------------------------------------
 
