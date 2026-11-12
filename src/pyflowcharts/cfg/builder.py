@@ -102,6 +102,8 @@ class ChartBuilder:
             case Terminal(kind=kind, label=label, loc=loc):
                 node_id = self.add_node(loc, kind, label)
                 self.connect(frontier, node_id)
+                if kind is NodeKind.RAISE and self.scopes:
+                    return []  # its exception edges (added by add_node) are its exits
                 self.connect([(node_id, None)], self.end_id)
                 return []
             case Branch():
