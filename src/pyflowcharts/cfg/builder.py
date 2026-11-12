@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
+from pyflowcharts.cfg.finally_ import FinallyContext, emit_try
 from pyflowcharts.cfg.model import (
     Block,
     Branch,
@@ -65,6 +66,7 @@ class ChartBuilder:
         self.edges: list[Edge] = []
         self.end_id = f"{qualname}#end"
         self.loops: list[LoopContext] = []
+        self.pending: list[FinallyContext] = []
         self.copy_suffix = ""
         self._reveal = False  # show hidden steps, because the block has nothing else
 
@@ -110,7 +112,7 @@ class ChartBuilder:
                 self.route_continue(frontier, loc)
                 return []
             case Try():
-                raise NotImplementedError("Try")
+                return emit_try(self, stmt, frontier)
         raise TypeError(f"unknown statement {stmt!r}")
 
     def _branch(self, stmt: Branch, frontier: Frontier) -> Frontier:
@@ -138,10 +140,22 @@ class ChartBuilder:
         return out + context.breaks
 
     def route_break(self, frontier: Frontier, loc: SourceLocation) -> None:
-        self._innermost_loop("break", loc).breaks.extend(frontier)
+        if (pending := self._pending_finally()) is not None:
+            pending.breaks.extend(frontier)
+        else:
+            self._innermost_loop("break", loc).breaks.extend(frontier)
 
     def route_continue(self, frontier: Frontier, loc: SourceLocation) -> None:
-        self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
+        if (pending := self._pending_finally()) is not None:
+            pending.continues.extend(frontier)
+        else:
+            self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
+
+    def _pending_finally(self) -> FinallyContext | None:
+        """The ``try … finally`` a loop transfer must pass through, if it is inside the loop."""
+        if self.pending and self.pending[-1].loop_depth == len(self.loops):
+            return self.pending[-1]
+        return None
 
     def _innermost_loop(self, kind: str, loc: SourceLocation) -> LoopContext:
         if not self.loops:
