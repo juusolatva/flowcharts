@@ -1,11 +1,13 @@
 import textwrap
 
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions, FunctionChart
 
 
 def chart_of(src: str, qualname: str = "f", **opts) -> FunctionChart:
-    doc = PythonFrontend().parse(textwrap.dedent(src).encode(), "t.py", ChartOptions(**opts))
+    doc = (
+        PythonFrontend().parse(textwrap.dedent(src).encode(), "t.py", ChartOptions(**opts)).document
+    )
     return next(c for c in doc.functions if c.qualname == qualname)
 
 

@@ -5,7 +5,7 @@ import textwrap
 import pytest
 from conftest import assert_graph_integrity
 
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 
 CORPUS = {
@@ -68,5 +68,5 @@ CORPUS = {
 @pytest.mark.parametrize("name", sorted(CORPUS))
 def test_corpus_graph_integrity(name):
     src = textwrap.dedent(CORPUS[name]).encode()
-    for chart in PythonFrontend().parse(src, f"{name}.py", ChartOptions()).functions:
+    for chart in PythonFrontend().parse(src, f"{name}.py", ChartOptions()).document.functions:
         assert_graph_integrity(chart)

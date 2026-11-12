@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from typing import Protocol
 
 from pyflowcharts.ir import ChartOptions, Document
@@ -25,8 +26,31 @@ class UnsupportedLanguageError(SourceError):
     """No frontend handles the file's extension."""
 
 
+@dataclass(frozen=True)
+class Diagnostic:
+    """A problem that did not stop the file from being charted (e.g. a skipped function).
+
+    ``qualname`` names the skipped function, or is ``None`` for an error outside functions.
+    """
+
+    path: str
+    line: int | None
+    message: str
+    qualname: str | None
+
+    def __str__(self) -> str:
+        where = self.path if self.line is None else f"{self.path}:{self.line}"
+        return f"{where}: warning: {self.message}"
+
+
+@dataclass(frozen=True)
+class ParseResult:
+    document: Document
+    warnings: tuple[Diagnostic, ...]
+
+
 class Frontend(Protocol):
     language: str
     extensions: tuple[str, ...]
 
-    def parse(self, source: bytes, path: str, options: ChartOptions) -> Document: ...
+    def parse(self, source: bytes, path: str, options: ChartOptions) -> ParseResult: ...

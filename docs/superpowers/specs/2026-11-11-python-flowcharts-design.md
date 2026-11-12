@@ -1,7 +1,7 @@
 # flowcharts — Design
 
 **Date:** 2026-11-11
-**Status:** Draft for review
+**Status:** Implemented. Amended on 2026-11-12 by `2026-11-12-tree-sitter-frontend-design.md` (tree-sitter frontend, shared CFG engine, per-function syntax errors), which wins where the two disagree.
 
 ## Purpose
 
@@ -10,7 +10,7 @@ A Python CLI tool that reads Python source files and produces a **control-flow f
 ## Scope
 
 **In scope (MVP)**
-- Python source files (`.py`) parsed with the standard-library `ast` module.
+- Python source files (`.py`) parsed with tree-sitter (`tree-sitter-python`), validated with the standard-library `ast` module.
 - One flowchart per function: module-level functions, methods (`Class.method`), nested functions (`outer.inner`), and `async def`.
 - Output formats: `json`, `dot`, `svg`, `png`, `mermaid`.
 - Detail options: show/hide parameters, return values and variable assignments.
@@ -24,11 +24,11 @@ A Python CLI tool that reads Python source files and produces a **control-flow f
 ## Architecture
 
 ```
-source file ──► Frontend (per language) ──► IR (Document) ──► Backends (shared)
-                 PythonFrontend (ast)                          json | dot → svg/png | mermaid
+source file ──► Frontend (per language) ──► cfg (shared engine) ──► IR (Document) ──► Backends (shared)
+                 PythonFrontend (tree-sitter)  model + builder                          json | dot → svg/png | mermaid
 ```
 
-- **Frontend**: turns one source file into a `Document`. It's selected by file extension through a small registry, so a new language means adding a module, not a new project.
+- **Frontend**: turns one source file into a `ParseResult` (a `Document` plus warnings). It's selected by file extension through a small registry, so a new language means adding a module, not a new project. Frontends produce language-neutral `cfg.model` statements; the shared `cfg.builder` turns them into nodes and edges.
 - **IR**: plain dataclasses, language-neutral. This is the contract between frontends and backends, and it's what the JSON file contains.
 - **Backends**: depend only on the IR.
 
@@ -77,7 +77,7 @@ Rules:
 
 ## Labels
 
-- Source text is the original source of the statement or expression when it fits on one line, so literals keep their written form (`0xD800`, quote style, `1_000`). Multi-line code falls back to `ast.unparse`, so comments and `\` continuations never end up in a label. The signature in the start label always uses `ast.unparse`. Whitespace runs collapse to one space, and text is truncated to `max_label_length` (default 60) with `…`.
+- Source text is the original source of the statement or expression, so literals keep their written form (`0xD800`, quote style, `1_000`). Comments and `\` continuations are removed and multi-line code is joined (see the tree-sitter spec's Labels section for the whitespace rule). Whitespace runs collapse to one space, and text is truncated to `max_label_length` (default 60) with `…`.
 - Start: `def name(<params>) -> <ret>` (prefixed `async ` when async). With parameters hidden: `def name(...)`.
 - Return: `return <expr>`, or just `return` with returns hidden.
 - Duplicate qualnames (property setters, redefinitions) get a suffix on the later definitions: `A.x@L9`.
@@ -99,7 +99,9 @@ pyflowcharts FILE [FILE ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 
 | Situation | Behaviour | Exit |
 |---|---|---|
-| Syntax error (including compiler-only errors like `break` outside a loop), null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
+| Syntax error in a function (including `break`/`continue` outside a loop) | `path:line: warning: syntax error in 'qualname'; function skipped`; the other functions are still written | 1 |
+| Syntax error outside every function | `path:line: warning: syntax error outside functions; nearby code may be missing`; functions still written | 1 |
+| Undecodable source, null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
 | Unknown `--function` name | error listing the available qualnames | 1 |
 | Two inputs with the same stem | error before anything is written | 1 |
 | Code too deeply nested to parse or chart | `path: error: code is too deeply nested …`; other files still processed | 1 |
@@ -107,11 +109,11 @@ pyflowcharts FILE [FILE ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 | `dot` binary missing while `svg`/`png` requested | error explaining how to install Graphviz; non-image outputs still written | 2 |
 | File has no functions | warning on stderr; JSON with empty `functions` written if `json` is selected | 0 |
 
-Source files are read as bytes so that PEP 263 coding cookies and BOMs are honoured. After `ast.parse`, the tree is also passed through `compile()` (never executed, with warnings suppressed), because `ast.parse` accepts some invalid programs that only the compiler rejects.
+Source files are read as bytes so that PEP 263 coding cookies and BOMs are honoured. Validity is decided per function by `ast.parse` as described in the tree-sitter spec; compiler-only errors other than `break`/`continue` outside a loop are not checked.
 
 Mermaid labels escape `#` as `#35;` before any other entity substitution, so literal text like `#34;` in source code isn't turned into a quotation mark.
 
 ## Future work this design prepares for
 
 - **GUI explorer** reading the JSON: source locations enable click-to-source, stable IDs enable linking and diffing, and `schema_version` enables format evolution.
-- **More languages**: implement the `Frontend` protocol (probably with tree-sitter) and register the file extensions.
+- **More languages**: implement the `Frontend` protocol with a tree-sitter grammar, produce `cfg.model` statements, and register the file extensions.
