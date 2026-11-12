@@ -25,8 +25,8 @@ def test_try_except_else_finally():
     assert flow(c) == {
         ("def f(path)", "try", None),
         ("try", "data = load(path)", None),
-        ("try", "except (OSError, ValueError) as e", "exception"),
-        ("try", "except Exception", "exception"),
+        ("data = load(path)", "except (OSError, ValueError) as e", "exception"),
+        ("data = load(path)", "except Exception", "exception"),
         ("except (OSError, ValueError) as e", "log(e)", None),
         ("log(e)", "return None", None),
         ("return None", "end", None),

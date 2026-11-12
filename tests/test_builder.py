@@ -151,7 +151,7 @@ def test_try_except_else_finally():
     assert flow(chart(body)) == {
         ("def f()", "try", None),
         ("try", "load()", None),
-        ("try", "except E", "exception"),
+        ("load()", "except E", "exception"),
         ("except E", "return", None),
         ("return", "end", None),
         ("load()", "use()", None),
@@ -172,10 +172,38 @@ def test_no_finally_clause():
     assert flow(c) == {
         ("def f()", "try", None),
         ("try", "a()", None),
-        ("try", "except", "exception"),
+        ("a()", "except", "exception"),
         ("a()", "end", None),
         ("except", "end", None),
     }
+
+
+def test_every_body_node_points_at_every_handler():
+    body = (
+        try_stmt(
+            2,
+            (Branch("if x", at(3), (Arm("True", (Step("a()", at(4)),)),), "False"),),
+            (Handler("except A", at(5), ()), Handler("except B", at(6), ())),
+        ),
+    )
+    f = flow(chart(body))
+    assert {(s, h, "exception") for s in ("if x", "a()") for h in ("except A", "except B")} <= f
+    assert not any(s == "try" and lbl == "exception" for s, _, lbl in f)
+
+
+def test_nested_try_body_points_only_at_inner_handlers():
+    inner = try_stmt(3, (Step("a()", at(4)),), (Handler("except I", at(5), (Step("h()", at(6)),)),))
+    outer = try_stmt(2, (inner,), (Handler("except O", at(7), ()),))
+    f = flow(chart((outer,)))
+    assert ("a()", "except I", "exception") in f and ("a()", "except O", "exception") not in f
+    assert {("except I", "except O", "exception"), ("h()", "except O", "exception")} <= f
+    # The inner try node is itself a statement of the outer body.
+    assert ("try", "except O", "exception") in f
+
+
+def test_try_pass_leaves_handlers_unreachable():
+    c = chart((try_stmt(2, (), (Handler("except E", at(3), ()),)),))
+    assert not any(t == "except E" for _, t, _ in flow(c))
 
 
 def test_break_runs_its_own_finally_copy():
