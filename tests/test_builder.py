@@ -245,9 +245,22 @@ def test_handler_nodes_point_at_finally_exception():
 def test_finally_exception_chains_to_outer_handlers():
     inner = try_stmt(3, (Step("a()", at(4)),), finalbody=(Step("c()", at(6)),))
     outer = try_stmt(2, (inner,), (Handler("except O", at(7), ()),))
-    f = flow(chart((outer,)))
-    assert ("c()", "except O", None) in f  # propagation keeps the frontier's own label
+    c = chart((outer,))
+    f = flow(c)
+    assert ("c()", "except O", "exception") in f  # propagation is drawn as an exception edge
     assert ("c()", "end", None) in f  # the normal copy continues to the next statement
+    # The copy's last node both raises and propagates into the same handler: one edge.
+    assert sum(1 for e in c.edges if e.source == "f#L6C4~exception@L3C4") == 1
+
+
+def test_finally_exception_propagation_relabels_branch_edges():
+    fin = (Branch("if x", at(6), (Arm("True", (Step("d()", at(7)),)),), "False"),)
+    inner = try_stmt(3, (Step("a()", at(4)),), finalbody=fin)
+    outer = try_stmt(2, (inner,), finalbody=(Step("co()", at(9)),))
+    c = chart((outer,))
+    into_copy = [e for e in c.edges if e.target == "f#L2C4~finally~exception@L2C4"]
+    assert {e.label for e in into_copy} == {"exception"}
+    assert len({(e.source, e.target) for e in into_copy}) == len(into_copy)
 
 
 def test_try_finally_with_empty_body_draws_no_finally():

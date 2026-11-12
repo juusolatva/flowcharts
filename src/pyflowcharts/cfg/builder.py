@@ -173,7 +173,8 @@ class ChartBuilder:
 
     def route_exception(self, frontier: Frontier) -> None:
         """Continue an exception that has finished its ``finally`` body: into the enclosing
-        handlers or finally, else to ``end`` (it propagates out of the function)."""
+        handlers or finally (as ``exception`` edges), else to ``end`` (it propagates out of
+        the function)."""
         if self.scopes:
             self.scopes[-1].attach(self, frontier)
         else:
@@ -213,7 +214,7 @@ class ChartBuilder:
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
         # Any statement can raise; synthetic (suffixed) nodes are not statements.
         if not suffix and self.scopes:
-            self.scopes[-1].attach(self, [(node_id, "exception")])
+            self.scopes[-1].attach(self, [(node_id, None)])
         return node_id
 
     def connect(self, frontier: Frontier, target_id: str) -> None:
