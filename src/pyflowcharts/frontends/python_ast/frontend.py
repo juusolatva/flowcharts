@@ -5,10 +5,11 @@ from __future__ import annotations
 import ast
 import warnings
 
+from pyflowcharts.cfg.builder import build_chart
 from pyflowcharts.frontends.base import SourceError
 from pyflowcharts.frontends.python_ast.cfg import (
-    CfgBuilder,
     FunctionNode,
+    function_body,
     location_of,
     start_label_for,
 )
@@ -79,8 +80,12 @@ class _Collector:
         return qualname
 
     def _chart(self, func: FunctionNode, qualname: str) -> FunctionChart:
-        nodes, edges = CfgBuilder(qualname, self.options, self.source).build(
-            func, start_label_for(func, self.options)
+        nodes, edges = build_chart(
+            qualname,
+            start_label_for(func, self.options),
+            location_of(func),
+            function_body(func, self.source, self.options),
+            self.options,
         )
         return FunctionChart(
             qualname=qualname,
