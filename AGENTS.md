@@ -29,22 +29,24 @@ SVG/PNG output needs the system Graphviz `dot` binary (`sudo apt install graphvi
 ## Architecture
 
 ```
-source file ──► Frontend (per language) ──► IR (Document) ──► Backends
-                 frontends/python_ast/       ir.py             serialize.py (json)
-                                                               backends/dot.py (dot/svg/png)
-                                                               backends/mermaid.py
+source file ──► Frontend (per language) ──► cfg (shared engine) ──► IR (Document) ──► Backends
+                 frontends/python/           cfg/model.py            ir.py             serialize.py (json)
+                 (tree-sitter adapter)       cfg/builder.py                            backends/dot.py (dot/svg/png)
+                                             cfg/finally_.py                           backends/mermaid.py
 ```
 
 - `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `FunctionChart`, `Node`, `Edge`, …). This is the contract between frontends and backends.
-- `src/pyflowcharts/frontends/`: the `Frontend` protocol and an extension-based registry. `python_ast/` is the only frontend (stdlib `ast`).
+- `src/pyflowcharts/cfg/`: the language-neutral statement model (`Step`, `Branch`, `Loop`, `Try`, …) and the chart builder (frontier walk, node IDs, reveal rule, `finally` copies). Frontends produce the model; the builder produces nodes and edges.
+- `src/pyflowcharts/frontends/`: the `Frontend` protocol (returning a `ParseResult` of document plus warnings) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning.
 - `src/pyflowcharts/backends/`: renderers that depend only on the IR.
 - `src/pyflowcharts/cli.py`: argument parsing, file output and exit codes.
 
 ## Rules
 
 **Layering**
-- Backends and the CLI must not import `ast` or anything from `frontends/python_ast/`. Language-specific logic lives only in its frontend.
-- Adding a language means adding a frontend module and registering its extensions. No backend changes should be needed.
+- Backends and the CLI must not import `ast`, tree-sitter or anything from `frontends/python/`. Language-specific logic lives only in its frontend.
+- `cfg/` must not import tree-sitter or anything from `frontends/`. It knows nothing about Python.
+- Adding a language means adding a frontend module that produces `cfg.model` statements and registering its extensions. No backend or `cfg/` changes should be needed.
 
 **IR and JSON format**
 - The IR holds no layout data (no x/y). Layout belongs to Graphviz or the GUI.
@@ -54,7 +56,7 @@ source file ──► Frontend (per language) ──► IR (Document) ──► 
 
 **Code style**
 - Python ≥ 3.12, full type hints, and `match` statements for AST dispatch.
-- Stay within the standard library plus `graphviz`. Ask before adding a runtime dependency.
+- Stay within the standard library plus `graphviz`, `tree-sitter` and `tree-sitter-python`. Ask before adding a runtime dependency. Pin new dependency versions released at least two weeks earlier; `tree-sitter` 0.26.0 is excluded (it corrupts node positions and segfaults).
 - Keep modules focused. If a file grows past roughly 300 lines, propose a split.
 
 **Testing**
@@ -72,4 +74,5 @@ source file ──► Frontend (per language) ──► IR (Document) ──► 
 
 - Exception edges start at the `try` node, not at each statement in the body.
 - `return`/`raise` inside `try … finally` go straight to `end` without passing through the finally body. `break`/`continue` *do* pass through it, and that path must stay correct.
+- Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Module-level code, directory recursion and call graphs are out of scope for the MVP.

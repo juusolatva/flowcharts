@@ -8,7 +8,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from pyflowcharts.frontends.base import Frontend, SourceError, UnsupportedLanguageError
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 
 FRONTENDS: tuple[Frontend, ...] = (PythonFrontend(),)
 

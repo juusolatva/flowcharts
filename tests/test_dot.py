@@ -5,7 +5,7 @@ import pytest
 from conftest import chart_of
 
 from pyflowcharts.backends.dot import SHAPES, render, to_dot
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
@@ -49,5 +49,7 @@ def test_render_svg_and_png():
 @needs_dot
 def test_renders_whole_fixture():  # every fixture chart is valid DOT
     path = Path(__file__).parent / "fixtures" / "sample.py"
-    for chart in PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).functions:
+    for chart in (
+        PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).document.functions
+    ):
         assert b"<svg" in render(chart, "svg")
