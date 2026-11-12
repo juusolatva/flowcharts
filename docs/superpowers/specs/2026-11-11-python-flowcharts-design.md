@@ -19,7 +19,6 @@ A Python CLI tool that reads Python source files and produces a **control-flow f
 - Other languages. The architecture allows them (see "Frontends"), but none are built.
 - The GUI explorer. Only its input format (JSON) is built now.
 - Directory recursion, module-level (non-function) code, call graphs between functions.
-- Exact exception edges (see "Known simplifications").
 
 ## Architecture
 
@@ -43,7 +42,7 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 Rules:
 - The IR always holds the full signature data. Display options only change node labels, plus which assignment nodes exist.
 - **No layout in the IR** (no x/y). Layout belongs to Graphviz or the GUI.
-- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`/`~continue@L{line}C{col}` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax.
+- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax.
 - Output is deterministic: the same input gives byte-identical JSON, DOT and Mermaid.
 
 ## Node kinds and shapes
@@ -64,7 +63,7 @@ Rules:
 - `if` is a decision with `True`/`False` edges. `elif` is a nested decision. Without `else`, the `False` edge goes to the next statement.
 - `match` is a decision with one `case <pattern>[ if <guard>]` edge per case. A `no match` edge is added unless the last case is irrefutable (`_` or a bare capture without a guard).
 - `for`/`while`: a loop node. The body is entered via `next` (for) or `True` (while), and the body's end flows back to the loop node. The exit is `done` (for) or `False` (while). A `while` with a constant-true test has no exit edge except `break`s. Loop `else` runs from the exit edge, and `break` skips it. `break` and `continue` get no nodes. They redirect the incoming edge to the loop exit or the loop node.
-- `try`: a `try` node, then the body. Each `except` handler is a node reached from the `try` node with an `exception` edge. `else` follows the body. If there's a `finally` block, everything that completes normally flows into a synthetic `finally` node, then into the finally body. A `break`/`continue` leaving the `try` also runs the finally body first. To keep paths distinct, the finally body is drawn once per path (`finally`, `finally (break)`, `finally (continue)`), and each copy continues to its own target: the next statement, the loop exit or the loop head. If the finally body ends the path itself (e.g. with its own `continue`), that overrides the pending transfer. `except*` works the same way.
+- `try`: a `try` node, then the body. Every node in the body has an `exception` edge to each `except` handler node (the `try` node itself has none). `else` follows the body. Handler and `else` nodes point at the `finally (exception)` copy if there is a `finally`, else at the enclosing `try`'s handlers. A `raise` inside a `try` is drawn only through those exception edges. With a `finally`, the finally body is drawn once per path that reaches it (`finally`, `finally (break)`, `finally (continue)`, `finally (return)`, `finally (exception)`), and each copy continues to its own target: the next statement, the loop exit, the loop head, `end`, or the enclosing handlers. Copies nobody reaches are not drawn. If the finally body ends the path itself (e.g. with its own `continue`), that overrides the pending transfer. `except*` works the same way.
 - `with`: a node labelled `with <items>`, then the body.
 - `return` and `raise` go to `end` and end the current path.
 - A nested `def`/`class` becomes a process node in its parent, and nested functions also get their own chart.
@@ -73,7 +72,7 @@ Rules:
 - Code after `return`/`raise`/`break`/`continue` (unreachable) is still emitted as nodes with no incoming edges.
 - Any statement type without its own rule becomes a process node labelled with its source text.
 
-**Known simplifications** (documented, not bugs): exceptions are drawn as edges from the `try` node, not from each statement. `return`/`raise` inside `try … finally` go straight to `end` without passing through the finally body (unlike `break`/`continue`, which do).
+**Known simplifications** (documented, not bugs): handlers are assumed to catch whatever reaches them, so the uncaught path out of a `try` that has handlers is not drawn. The `try` node itself has no exception edges, so a `try` whose body has no nodes leaves its handlers unreachable.
 
 ## Labels
 
