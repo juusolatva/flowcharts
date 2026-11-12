@@ -8,6 +8,8 @@ import graphviz
 
 from pyflowcharts.ir import FunctionChart, NodeKind
 
+EXCEPTION_LABEL = "exception"  # drawn dashed so the normal flow stays readable
+
 SHAPES: dict[NodeKind, str] = {
     NodeKind.START: "oval",
     NodeKind.END: "oval",
@@ -33,10 +35,12 @@ def to_digraph(chart: FunctionChart) -> graphviz.Digraph:
         # escape() keeps backslashes in source text literal instead of DOT escapes like \n.
         graph.node(node.id, label=graphviz.escape(node.label), **attrs)
     for edge in chart.edges:
-        if edge.label is None:
-            graph.edge(edge.source, edge.target)
-        else:
-            graph.edge(edge.source, edge.target, label=graphviz.escape(edge.label))
+        attrs = {}
+        if edge.label is not None:
+            attrs["label"] = graphviz.escape(edge.label)
+        if edge.label == EXCEPTION_LABEL:
+            attrs["style"] = "dashed"
+        graph.edge(edge.source, edge.target, **attrs)
     return graph
 
 
