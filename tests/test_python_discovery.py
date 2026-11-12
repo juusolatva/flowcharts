@@ -53,3 +53,8 @@ def test_parameters_and_returns():
     assert [p.kind for p in parameters(g.node, s)] == [K.KEYWORD_ONLY, K.VAR_KEYWORD]
     assert parameters(g.node, s)[1].annotation == "int"
     assert returns(g.node, s) is None
+
+
+def test_default_after_a_comment_is_read_from_the_value_field():
+    s, (f,) = found("def f(x= # why\n    42, y: int = # why\n    3): pass")
+    assert [p.default for p in parameters(f.node, s)] == ["42", "3"]

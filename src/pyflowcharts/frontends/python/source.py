@@ -12,7 +12,7 @@ from pyflowcharts.ir import SourceLocation
 
 _PARSER = Parser(Language(tree_sitter_python.language()))
 
-# Whitespace between tokens is dropped (not replaced by one space) next to these.
+# A line break between tokens is dropped (not replaced by one space) next to these.
 _NO_SPACE_AFTER = b"([{"
 _NO_SPACE_BEFORE = b")]},."
 _DROPPED = frozenset({"comment", "line_continuation"})
@@ -43,9 +43,9 @@ class Source:
     # -- labels ---------------------------------------------------------------
 
     def source_text(self, node: Node) -> str:
-        """The node's source with comments and continuations removed and whitespace gaps
-        between tokens collapsed to one space (none next to brackets, commas and dots).
-        String literals are kept verbatim."""
+        """The node's source with comments and continuations removed and line breaks
+        between tokens joined by one space (none next to brackets, commas and dots).
+        Same-line spacing and string literals are kept verbatim."""
         parts: list[bytes] = []
         previous: Node | None = None
         dropped = False  # a comment/continuation sat in the gap (so the gap is whitespace)
@@ -55,16 +55,22 @@ class Source:
                 continue
             if previous is not None:
                 gap = self.data[previous.end_byte : leaf.start_byte]
-                if gap and (dropped or gap.isspace()):
-                    before = self.data[previous.end_byte - 1 : previous.end_byte]
-                    after = self.data[leaf.start_byte : leaf.start_byte + 1]
-                    if before not in _NO_SPACE_AFTER and after not in _NO_SPACE_BEFORE:
-                        parts.append(b" ")
+                if gap and (dropped or b"\n" in gap):
+                    parts.append(self._joined_gap(previous, leaf))
                 else:
-                    parts.append(gap)
+                    parts.append(gap)  # same-line text is kept as written
             parts.append(self.data[leaf.start_byte : leaf.end_byte])
             previous, dropped = leaf, False
         return b"".join(parts).decode()
+
+    def _joined_gap(self, previous: Node, leaf: Node) -> bytes:
+        """What replaces a line break between two tokens: one space, or nothing next to a
+        bracket, comma or dot (so a wrapped call reads ``g(1, 2)``)."""
+        before = self.data[previous.end_byte - 1 : previous.end_byte]
+        after = self.data[leaf.start_byte : leaf.start_byte + 1]
+        if before in _NO_SPACE_AFTER or after in _NO_SPACE_BEFORE:
+            return b""
+        return b" "
 
     # -- locations ------------------------------------------------------------
 

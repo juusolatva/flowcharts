@@ -140,12 +140,16 @@ class ChartBuilder:
         return out + context.breaks
 
     def route_break(self, frontier: Frontier, loc: SourceLocation) -> None:
+        if not self.loops:
+            raise StrayLoopTransfer("break", loc)
         if (pending := self._pending_finally()) is not None:
             pending.breaks.extend(frontier)
         else:
             self._innermost_loop("break", loc).breaks.extend(frontier)
 
     def route_continue(self, frontier: Frontier, loc: SourceLocation) -> None:
+        if not self.loops:
+            raise StrayLoopTransfer("continue", loc)
         if (pending := self._pending_finally()) is not None:
             pending.continues.extend(frontier)
         else:

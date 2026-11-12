@@ -149,3 +149,18 @@ def test_while_constant_check_does_not_leak_syntax_warnings():
         warnings.simplefilter("error")
         c = chart('def f():\n    while "\\d":\n        g()\n')
     assert ('while "\\d"', "end", "False") not in flow(c)
+
+
+def test_match_subject_tuple_keeps_commas():
+    c = chart("def f(a, b):\n    match a, b:\n        case _:\n            g()\n")
+    assert "match a, b" in labels(c)
+
+
+def test_trailing_comma_case_is_a_sequence_pattern():
+    f = flow(chart("def f(x):\n    match x:\n        case y,:\n            g()\n"))
+    assert ("match x", "end", "no match") in f
+
+
+def test_concatenated_fstring_is_not_a_docstring():
+    c = chart("def f():\n    'prefix' f'{g()}'\n")
+    assert "'prefix' f'{g()}'" in labels(c)
