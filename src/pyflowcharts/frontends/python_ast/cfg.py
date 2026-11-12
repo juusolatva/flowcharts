@@ -1,21 +1,24 @@
-"""Build a function's control-flow graph (flowchart nodes and edges) from its AST.
-
-The builder threads a *frontier* through the statements: the list of pending
-``(node_id, edge_label)`` pairs whose outgoing edge should point at the next node.
-A statement that ends the path (``return``, ``raise``, ``break``, ``continue``)
-returns an empty frontier.
-"""
+"""Convert a function's ``ast`` body into model statements for the shared CFG builder."""
 
 from __future__ import annotations
 
 import ast
-from dataclasses import dataclass
 
+from pyflowcharts.cfg.model import (
+    Arm,
+    Block,
+    Branch,
+    Break,
+    Continue,
+    Handler,
+    Loop,
+    Step,
+    Stmt,
+    Terminal,
+    Try,
+)
 from pyflowcharts.frontends.python_ast.source import SourceText
-from pyflowcharts.ir import ChartOptions, Edge, Node, NodeKind, SourceLocation
-from pyflowcharts.labels import shorten
-
-Frontier = list[tuple[str, str | None]]
+from pyflowcharts.ir import ChartOptions, NodeKind, SourceLocation
 
 FunctionNode = ast.FunctionDef | ast.AsyncFunctionDef
 
@@ -40,6 +43,11 @@ def start_label_for(func: FunctionNode, options: ChartOptions) -> str:
     return label
 
 
+def function_body(func: FunctionNode, source: SourceText, options: ChartOptions) -> Block:
+    body = func.body[1:] if func.body and _is_docstring(func.body[0]) else func.body
+    return _Converter(source, options).block(body)
+
+
 def _is_docstring(stmt: ast.stmt) -> bool:
     return (
         isinstance(stmt, ast.Expr)
@@ -48,250 +56,117 @@ def _is_docstring(stmt: ast.stmt) -> bool:
     )
 
 
-def _is_skipped(stmt: ast.stmt) -> bool:
-    """Statements that never get a node (a leading docstring is stripped separately)."""
-    match stmt:
-        case ast.Pass() | ast.Global() | ast.Nonlocal():
-            return True
-        case ast.Expr(value=ast.Constant(value=value)) if value is Ellipsis:
-            return True
-    return False
-
-
 def _contains_call(node: ast.AST | None) -> bool:
     return node is not None and any(isinstance(n, ast.Call) for n in ast.walk(node))
 
 
-@dataclass
-class _LoopContext:
-    loop_id: str
-    breaks: Frontier  # paths leaving the loop via `break`
-
-
-@dataclass
-class _FinallyContext:
-    loop_depth: int  # len(loop stack) when the `try` began
-    breaks: Frontier  # pending `break`s that must run the finally body first
-    continues: Frontier  # pending `continue`s that must run the finally body first
-
-
-class CfgBuilder:
-    def __init__(self, qualname: str, options: ChartOptions, source: SourceText) -> None:
-        self.qualname = qualname
-        self.options = options
+class _Converter:
+    def __init__(self, source: SourceText, options: ChartOptions) -> None:
         self.source = source
-        self._reveal = False  # show hidden assignments, because the block has nothing else
-        self.nodes: list[Node] = []
-        self.edges: list[Edge] = []
-        self._end_id = f"{qualname}#end"
-        self._copy_suffix = ""
-        self._loops: list[_LoopContext] = []
-        self._finally: list[_FinallyContext] = []
+        self.options = options
 
-    def build(self, func: FunctionNode, start_label: str) -> tuple[list[Node], list[Edge]]:
-        start_id = f"{self.qualname}#start"
-        self.nodes.append(
-            Node(start_id, NodeKind.START, self._label(start_label), location_of(func))
-        )
-        self.nodes.append(Node(self._end_id, NodeKind.END, "end", None))
-        body = func.body[1:] if func.body and _is_docstring(func.body[0]) else func.body
-        frontier = self._block(body, [(start_id, None)])
-        self._connect(frontier, self._end_id)
-        return self.nodes, self.edges
+    def block(self, stmts: list[ast.stmt]) -> Block:
+        out: list[Stmt] = []
+        for stmt in stmts:
+            converted = self.stmt(stmt)
+            if converted is not None:
+                out.append(converted)
+        return tuple(out)
 
-    # -- statement handling -------------------------------------------------
-
-    def _block(self, stmts: list[ast.stmt], frontier: Frontier) -> Frontier:
-        saved = self._reveal
-        # A block made only of hidden assignments would look empty (e.g. an `if` whose True
-        # and False edges meet at the same node), so it shows them anyway.
-        self._reveal = not any(self._visible(stmt) for stmt in stmts)
-        try:
-            for stmt in stmts:
-                frontier = self._stmt(stmt, frontier)
-        finally:
-            self._reveal = saved
-        return frontier
-
-    def _visible(self, stmt: ast.stmt) -> bool:
-        """Whether the statement gets a node under the normal (non-reveal) rules."""
+    def stmt(self, stmt: ast.stmt) -> Stmt | None:
+        loc = location_of(stmt)
         match stmt:
+            case ast.Pass() | ast.Global() | ast.Nonlocal():
+                return None
+            case ast.Expr(value=ast.Constant(value=value)) if value is Ellipsis:
+                return None
             case ast.Assign() | ast.AugAssign() | ast.AnnAssign():
-                return self.options.show_variables or _contains_call(stmt.value)
-        return not _is_skipped(stmt)
-
-    def _stmt(self, stmt: ast.stmt, frontier: Frontier) -> Frontier:
-        match stmt:
-            case _ if _is_skipped(stmt):
-                return frontier
-            case ast.Assign() | ast.AugAssign() | ast.AnnAssign() if not (
-                self._reveal or self._visible(stmt)
-            ):
-                return frontier
+                return Step(self._text(stmt), loc, hidden=not _contains_call(stmt.value))
             case ast.Return(value=value):
                 if value is None or not self.options.show_returns:
                     label = "return"
                 else:
                     label = f"return {self._text(value)}"
-                return self._terminal(stmt, frontier, NodeKind.RETURN, label)
+                return Terminal(NodeKind.RETURN, label, loc)
             case ast.Raise():
-                return self._terminal(stmt, frontier, NodeKind.RAISE, self._text(stmt))
+                return Terminal(NodeKind.RAISE, self._text(stmt), loc)
             case ast.If():
-                return self._if(stmt, frontier)
+                return self._if(stmt)
             case ast.Match():
-                return self._match(stmt, frontier)
+                return self._match(stmt)
             case ast.For() | ast.AsyncFor():
                 prefix = "async " if isinstance(stmt, ast.AsyncFor) else ""
                 label = f"{prefix}for {self._text(stmt.target)} in {self._text(stmt.iter)}"
-                return self._loop(stmt, frontier, label, "next", "done", exits=True)
+                return Loop(
+                    label, loc, "next", "done", self.block(stmt.body), self.block(stmt.orelse)
+                )
             case ast.While():
                 always = isinstance(stmt.test, ast.Constant) and bool(stmt.test.value)
                 label = f"while {self._text(stmt.test)}"
-                return self._loop(stmt, frontier, label, "True", "False", exits=not always)
+                exit_label = None if always else "False"
+                return Loop(
+                    label, loc, "True", exit_label, self.block(stmt.body), self.block(stmt.orelse)
+                )
             case ast.Try() | ast.TryStar():
-                return self._try(stmt, frontier)
+                return self._try(stmt)
             case ast.With() | ast.AsyncWith():
                 prefix = "async " if isinstance(stmt, ast.AsyncWith) else ""
                 items = ", ".join(self._withitem(item) for item in stmt.items)
-                out = self._chain(stmt, frontier, NodeKind.PROCESS, f"{prefix}with {items}")
-                return self._block(stmt.body, out)
+                return Step(f"{prefix}with {items}", loc, body=self.block(stmt.body))
             case ast.FunctionDef() | ast.AsyncFunctionDef():
-                label = start_label_for(stmt, self.options)
-                return self._chain(stmt, frontier, NodeKind.PROCESS, label)
+                return Step(start_label_for(stmt, self.options), loc)
             case ast.ClassDef():
-                return self._chain(stmt, frontier, NodeKind.PROCESS, f"class {stmt.name}")
+                return Step(f"class {stmt.name}", loc)
             case ast.Break():
-                self._break(frontier)
-                return []
+                return Break(loc)
             case ast.Continue():
-                self._continue(frontier)
-                return []
+                return Continue(loc)
             case _:
-                return self._chain(stmt, frontier, NodeKind.PROCESS, self._text(stmt))
+                return Step(self._text(stmt), loc)
 
-    def _loop(
-        self,
-        stmt: ast.For | ast.AsyncFor | ast.While,
-        frontier: Frontier,
-        label: str,
-        enter: str,
-        leave: str,
-        *,
-        exits: bool,
-    ) -> Frontier:
-        """``exits=False`` for loops whose test is constant-true: only ``break`` leaves them."""
-        node_id = self._add_node(stmt, NodeKind.LOOP, label)
-        self._connect(frontier, node_id)
-        context = _LoopContext(node_id, [])
-        self._loops.append(context)
-        try:
-            body_end = self._block(stmt.body, [(node_id, enter)])
-        finally:
-            self._loops.pop()
-        self._connect(body_end, node_id)
-        out: Frontier = [(node_id, leave)] if exits else []
+    def _if(self, stmt: ast.If) -> Branch:
+        arms = [Arm("True", self.block(stmt.body))]
+        default = None
         if stmt.orelse:
-            out = self._block(stmt.orelse, out)
-        return out + context.breaks
-
-    def _break(self, frontier: Frontier) -> None:
-        if (pending := self._pending_finally()) is not None:
-            pending.breaks.extend(frontier)
+            arms.append(Arm("False", self.block(stmt.orelse)))
         else:
-            self._innermost_loop().breaks.extend(frontier)
+            default = "False"
+        return Branch(f"if {self._text(stmt.test)}", location_of(stmt), tuple(arms), default)
 
-    def _continue(self, frontier: Frontier) -> None:
-        if (pending := self._pending_finally()) is not None:
-            pending.continues.extend(frontier)
-        else:
-            self._connect(frontier, self._innermost_loop().loop_id)
-
-    def _pending_finally(self) -> _FinallyContext | None:
-        """The ``try … finally`` a loop transfer must pass through, if it is inside the loop."""
-        if self._finally and self._finally[-1].loop_depth == len(self._loops):
-            return self._finally[-1]
-        return None
-
-    def _innermost_loop(self) -> _LoopContext:
-        if not self._loops:  # compile() validation in the frontend makes this unreachable
-            raise RuntimeError("internal: break/continue outside loop")
-        return self._loops[-1]
-
-    def _try(self, stmt: ast.Try | ast.TryStar, frontier: Frontier) -> Frontier:
-        try_id = self._add_node(stmt, NodeKind.PROCESS, "try")
-        self._connect(frontier, try_id)
-        context = _FinallyContext(len(self._loops), [], [])
-        if stmt.finalbody:
-            self._finally.append(context)
-        try:
-            normal = self._block(stmt.body, [(try_id, None)])
-            if stmt.orelse:
-                normal = self._block(stmt.orelse, normal)
-            star = "*" if isinstance(stmt, ast.TryStar) else ""
-            for handler in stmt.handlers:
-                label = f"except{star}"
-                if handler.type is not None:
-                    label += f" {self._text(handler.type)}"
-                if handler.name is not None:
-                    label += f" as {handler.name}"
-                handler_id = self._add_node(handler, NodeKind.PROCESS, label)
-                self._connect([(try_id, "exception")], handler_id)
-                normal += self._block(handler.body, [(handler_id, None)])
-        finally:
-            if stmt.finalbody:
-                self._finally.pop()
-        if not stmt.finalbody:
-            return normal
-
-        result = self._finally_copy(stmt, normal, "finally")
-        # Loop transfers run their own copy of the finally body, then continue the transfer
-        # (which outer `finally` blocks and loops route in turn). A finally body that ends
-        # the path itself (e.g. its own `continue`) yields an empty frontier and overrides it.
-        for kind, pending, route in (
-            ("break", context.breaks, self._break),
-            ("continue", context.continues, self._continue),
-        ):
-            if pending:
-                saved = self._copy_suffix
-                # Name the owning `try`, so copy paths through nested try blocks stay unique.
-                self._copy_suffix += f"~{kind}@L{stmt.lineno}C{stmt.col_offset}"
-                try:
-                    route(self._finally_copy(stmt, pending, f"finally ({kind})"))
-                finally:
-                    self._copy_suffix = saved
-        return result
-
-    def _finally_copy(self, stmt: ast.Try | ast.TryStar, entry: Frontier, label: str) -> Frontier:
-        fin_id = self._add_node(stmt, NodeKind.PROCESS, label, suffix="~finally")
-        self._connect(entry, fin_id)
-        return self._block(stmt.finalbody, [(fin_id, None)])
-
-    def _if(self, stmt: ast.If, frontier: Frontier) -> Frontier:
-        node_id = self._add_node(stmt, NodeKind.DECISION, f"if {self._text(stmt.test)}")
-        self._connect(frontier, node_id)
-        out = self._block(stmt.body, [(node_id, "True")])
-        if stmt.orelse:
-            return out + self._block(stmt.orelse, [(node_id, "False")])
-        return out + [(node_id, "False")]
-
-    def _match(self, stmt: ast.Match, frontier: Frontier) -> Frontier:
-        node_id = self._add_node(stmt, NodeKind.DECISION, f"match {self._text(stmt.subject)}")
-        self._connect(frontier, node_id)
-        out: Frontier = []
+    def _match(self, stmt: ast.Match) -> Branch:
+        arms = []
         for case in stmt.cases:
             label = f"case {self._text(case.pattern)}"
             if case.guard is not None:
                 label += f" if {self._text(case.guard)}"
-            out += self._block(case.body, [(node_id, self._label(label))])
+            arms.append(Arm(label, self.block(case.body)))
         last = stmt.cases[-1]
         irrefutable = (
             last.guard is None
             and isinstance(last.pattern, ast.MatchAs)
             and last.pattern.pattern is None
         )
-        if not irrefutable:
-            out.append((node_id, "no match"))
-        return out
+        default = None if irrefutable else "no match"
+        return Branch(f"match {self._text(stmt.subject)}", location_of(stmt), tuple(arms), default)
+
+    def _try(self, stmt: ast.Try | ast.TryStar) -> Try:
+        star = "*" if isinstance(stmt, ast.TryStar) else ""
+        handlers = []
+        for handler in stmt.handlers:
+            label = f"except{star}"
+            if handler.type is not None:
+                label += f" {self._text(handler.type)}"
+            if handler.name is not None:
+                label += f" as {handler.name}"
+            handlers.append(Handler(label, location_of(handler), self.block(handler.body)))
+        finalbody = self.block(stmt.finalbody) if stmt.finalbody else None
+        return Try(
+            location_of(stmt),
+            self.block(stmt.body),
+            tuple(handlers),
+            self.block(stmt.orelse),
+            finalbody,
+        )
 
     # -- labels ---------------------------------------------------------------
 
@@ -303,37 +178,3 @@ class CfgBuilder:
         if item.optional_vars is not None:
             text += f" as {self._text(item.optional_vars)}"
         return text
-
-    # -- graph primitives ---------------------------------------------------
-
-    def _chain(self, stmt: ast.stmt, frontier: Frontier, kind: NodeKind, label: str) -> Frontier:
-        """Add a node after ``frontier`` and continue from it."""
-        node_id = self._add_node(stmt, kind, label)
-        self._connect(frontier, node_id)
-        return [(node_id, None)]
-
-    def _terminal(self, stmt: ast.stmt, frontier: Frontier, kind: NodeKind, label: str) -> Frontier:
-        """Add a node after ``frontier`` that leads straight to ``end``."""
-        node_id = self._add_node(stmt, kind, label)
-        self._connect(frontier, node_id)
-        self._connect([(node_id, None)], self._end_id)
-        return []
-
-    def _add_node(
-        self,
-        stmt: ast.stmt | ast.excepthandler,
-        kind: NodeKind,
-        label: str,
-        suffix: str = "",
-    ) -> str:
-        node_id = f"{self.qualname}#L{stmt.lineno}C{stmt.col_offset}{suffix}{self._copy_suffix}"
-        location = None if suffix else location_of(stmt)
-        self.nodes.append(Node(node_id, kind, self._label(label), location))
-        return node_id
-
-    def _connect(self, frontier: Frontier, target_id: str) -> None:
-        for source_id, label in frontier:
-            self.edges.append(Edge(source_id, target_id, label))
-
-    def _label(self, text: str) -> str:
-        return shorten(text, self.options.max_label_length)
