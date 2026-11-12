@@ -13,6 +13,7 @@ from pyflowcharts import __version__
 from pyflowcharts.backends.dot import render, to_dot
 from pyflowcharts.backends.mermaid import to_mermaid
 from pyflowcharts.frontends import SourceError, frontend_for_path
+from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.ir import ChartOptions, Document
 from pyflowcharts.serialize import to_json
 
@@ -53,10 +54,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     documents: list[tuple[Path, Document]] = []
     for path in files:
         try:
-            documents.append((path, _parse_file(path, options)))
+            result = _parse_file(path, options)
         except SourceError as err:
             print(err, file=sys.stderr)
             status = EXIT_ERROR
+            continue
+        for warning in result.warnings:
+            print(warning, file=sys.stderr)
+            status = EXIT_ERROR
+        documents.append((path, result.document))
 
     if args.function:
         available = [chart.qualname for _, doc in documents for chart in doc.functions]
@@ -163,7 +169,7 @@ def _stem_collision(paths: list[Path]) -> tuple[Path, Path] | None:
     return None
 
 
-def _parse_file(path: Path, options: ChartOptions) -> Document:
+def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
     frontend = frontend_for_path(path)
     try:
         source = path.read_bytes()

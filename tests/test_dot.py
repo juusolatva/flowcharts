@@ -49,5 +49,7 @@ def test_render_svg_and_png():
 @needs_dot
 def test_renders_whole_fixture():  # every fixture chart is valid DOT
     path = Path(__file__).parent / "fixtures" / "sample.py"
-    for chart in PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).functions:
+    for chart in (
+        PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).document.functions
+    ):
         assert b"<svg" in render(chart, "svg")

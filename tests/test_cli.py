@@ -117,7 +117,9 @@ def test_end_to_end_fixture(tmp_path):
     formats = ["json", "dot", "svg", "png", "mermaid"]
     assert main([str(fixture), "-o", str(tmp_path), "-f", *formats]) == 0
     doc = from_json((tmp_path / "sample.json").read_text())
-    assert doc == PythonFrontend().parse(fixture.read_bytes(), str(fixture), ChartOptions())
+    assert (
+        doc == PythonFrontend().parse(fixture.read_bytes(), str(fixture), ChartOptions()).document
+    )
     for c in doc.functions:
         for ext in ("dot", "svg", "png", "mmd"):
             assert (tmp_path / "sample" / f"{c.qualname}.{ext}").stat().st_size > 0

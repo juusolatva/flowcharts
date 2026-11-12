@@ -6,7 +6,7 @@ import ast
 import warnings
 
 from pyflowcharts.cfg.builder import build_chart
-from pyflowcharts.frontends.base import SourceError
+from pyflowcharts.frontends.base import ParseResult, SourceError
 from pyflowcharts.frontends.python_ast.cfg import (
     FunctionNode,
     function_body,
@@ -21,14 +21,15 @@ class PythonFrontend:
     language = "python"
     extensions: tuple[str, ...] = (".py",)
 
-    def parse(self, source: bytes, path: str, options: ChartOptions) -> Document:
+    def parse(self, source: bytes, path: str, options: ChartOptions) -> ParseResult:
         tree = _parse(source, path)
         collector = _Collector(options, SourceText(source))
         try:
             collector.walk(tree.body, prefix="")
         except (RecursionError, MemoryError) as e:  # e.g. ast.unparse on huge expressions
             raise SourceError(path, "code is too deeply nested to chart") from e
-        return Document(source=path, language=self.language, functions=collector.charts)
+        document = Document(source=path, language=self.language, functions=collector.charts)
+        return ParseResult(document, ())
 
 
 def _parse(source: bytes, path: str) -> ast.Module:
