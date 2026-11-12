@@ -2,9 +2,7 @@
 
 from __future__ import annotations
 
-from pyflowcharts.ir import FunctionChart, NodeKind
-
-EXCEPTION_LABEL = "exception"  # drawn dashed so the normal flow stays readable
+from pyflowcharts.ir import EXCEPTION_LABEL, FunctionChart, NodeKind
 
 # "{t}" is replaced by the escaped label.
 SHAPES: dict[NodeKind, str] = {

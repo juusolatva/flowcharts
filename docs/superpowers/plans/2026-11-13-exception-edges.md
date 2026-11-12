@@ -429,7 +429,7 @@ Node-ID rule: `(duplicated finally bodies add ~break@L{line}C{col}, ~continue@â€
 
 - [ ] **Step 4: Verify**
 
-Run: `uv run pytest -q && uv run ruff check && uv run pyflowcharts tests/fixtures/sample.py -o /tmp/claude-1000/-home-excali-github-flowcharts/6560237b-242c-402e-847f-5b2c33252bfe/scratchpad/out -f dot`
+Run: `uv run pytest -q && uv run ruff check && uv run pyflowcharts tests/fixtures/sample.py -o /tmp/pyflowcharts-check -f dot`
 Expected: tests pass; the CLI exits 0.
 
 - [ ] **Step 5: Commit**

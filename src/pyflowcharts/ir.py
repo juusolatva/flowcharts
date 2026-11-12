@@ -11,6 +11,8 @@ from enum import StrEnum
 
 SCHEMA_VERSION = 1
 
+EXCEPTION_LABEL = "exception"  # edge label of every exception path; backends draw it dashed
+
 
 class NodeKind(StrEnum):
     START = "start"

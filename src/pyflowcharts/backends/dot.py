@@ -6,9 +6,7 @@ from typing import Literal
 
 import graphviz
 
-from pyflowcharts.ir import FunctionChart, NodeKind
-
-EXCEPTION_LABEL = "exception"  # drawn dashed so the normal flow stays readable
+from pyflowcharts.ir import EXCEPTION_LABEL, FunctionChart, NodeKind
 
 SHAPES: dict[NodeKind, str] = {
     NodeKind.START: "oval",

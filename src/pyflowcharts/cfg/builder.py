@@ -176,7 +176,7 @@ class ChartBuilder:
         handlers or finally (as ``exception`` edges), else to ``end`` (it propagates out of
         the function)."""
         if self.scopes:
-            self.scopes[-1].attach(self, frontier)
+            self.scopes[-1].propagate(self, frontier)
         else:
             self.connect(frontier, self.end_id)
 
@@ -214,7 +214,7 @@ class ChartBuilder:
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
         # Any statement can raise; synthetic (suffixed) nodes are not statements.
         if not suffix and self.scopes:
-            self.scopes[-1].attach(self, [(node_id, None)])
+            self.scopes[-1].attach(self, [node_id])
         return node_id
 
     def connect(self, frontier: Frontier, target_id: str) -> None:

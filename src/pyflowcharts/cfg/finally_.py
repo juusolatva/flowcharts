@@ -1,8 +1,12 @@
 """``try``/``except``/``finally`` handling for the chart builder.
 
-A ``finally`` body is drawn once per path that runs it: the normal path, and one copy
-per pending ``break``/``continue`` that left the ``try`` body, so each copy continues
-to its own target (the next statement, the loop exit or the loop head).
+Every node inside a ``try`` body raises into an ``ExceptionScope``: straight to the handler
+nodes, or into a pending frontier when the exception must run the finally body first.
+
+A ``finally`` body is drawn once per path that runs it: the normal path, and one copy per
+pending ``break``/``continue``/``return``/exception that left the ``try`` body, so each copy
+continues to its own target (the next statement, the loop exit, the loop head, ``end`` or
+the enclosing handlers). Copies nothing reaches are not drawn.
 """
 
 from __future__ import annotations
@@ -13,12 +17,10 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from pyflowcharts.cfg.model import Try
-from pyflowcharts.ir import Edge, NodeKind
+from pyflowcharts.ir import EXCEPTION_LABEL, Edge, NodeKind
 
 if TYPE_CHECKING:
     from pyflowcharts.cfg.builder import ChartBuilder, Frontier
-
-EXCEPTION = "exception"  # the edge label of every exception path
 
 
 @dataclass
@@ -29,18 +31,25 @@ class ExceptionScope:
     handler_ids: list[str]
     pending: Frontier | None
 
-    def attach(self, builder: ChartBuilder, frontier: Frontier) -> None:
-        """Add an ``exception`` edge from each frontier node to every target. A node that
-        already has one (it raised itself and also ends a ``finally (exception)`` copy)
-        gets no duplicate."""
-        for source_id, _ in frontier:
+    def attach(self, builder: ChartBuilder, node_ids: list[str]) -> None:
+        """Add an ``exception`` edge from each node to every target."""
+        for source_id in node_ids:
             if self.handler_ids:
                 for handler_id in self.handler_ids:
-                    edge = Edge(source_id, handler_id, EXCEPTION)
-                    if edge not in builder.edges:
-                        builder.edges.append(edge)
-            elif self.pending is not None and (source_id, EXCEPTION) not in self.pending:
-                self.pending.append((source_id, EXCEPTION))
+                    builder.edges.append(Edge(source_id, handler_id, EXCEPTION_LABEL))
+            elif self.pending is not None:
+                self.pending.append((source_id, EXCEPTION_LABEL))
+
+    def propagate(self, builder: ChartBuilder, frontier: Frontier) -> None:
+        """Continue an exception leaving a ``finally (exception)`` copy. Its last node raised
+        into this scope already (it is a statement), so it gets no second edge."""
+        self.attach(builder, [s for s, _ in frontier if not self._has_edge_from(builder, s)])
+
+    def _has_edge_from(self, builder: ChartBuilder, source_id: str) -> bool:
+        if self.handler_ids:
+            targets = set(self.handler_ids)
+            return any(e.source == source_id and e.target in targets for e in builder.edges)
+        return self.pending is not None and (source_id, EXCEPTION_LABEL) in self.pending
 
 
 @dataclass
