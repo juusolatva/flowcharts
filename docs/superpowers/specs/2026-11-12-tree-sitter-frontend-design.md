@@ -85,6 +85,7 @@ Parameter kinds come from the `parameters` node's children: `positional_separato
 - `line = row + 1`, `column` = byte offset within the line (as with `ast`).
 - End positions exclude trailing `comment` nodes: a tree-sitter `block` extends over a comment that follows its last statement, `ast` does not. The end of a function or compound statement is the end of its last non-comment descendant.
 - The location of a decorated nested `def`/`class` is that of the inner `function_definition`/`class_definition`, not the `decorated_definition` (which starts at `@`), matching `ast`.
+- An `elif` node ends at the end of its own clause. (`ast` extended it over the remaining `elif`/`else` chain.)
 
 ### Statement mapping
 
@@ -179,6 +180,8 @@ On branch `feat/tree-sitter-frontend`, merged through a PR.
 2. **Protocol change.** `ParseResult`/`Diagnostic` in `frontends/base.py`, the CLI prints warnings; `python_ast` returns no warnings yet.
 3. **Tree-sitter adapter** in `frontends/python/`, with validation. Switch `conftest` and the registry to it, update tests for intentional differences, add the new tests.
 4. **Comparison run** (one-off, not committed): chart the stdlib with both frontends, with and without `--variables`, and compare per function the `flow()` triples, the node IDs and the node and function locations. Classify every difference as intended or a bug. Bugs get a regression test first.
+
+   Outcome (2026-11-12, CPython 3.13.14 stdlib, 573 files, 14358 functions, both option sets): no function skipped, none missing, every node ID and start position identical. Three bugs found and fixed with regression tests: `type(x).attr = v` parsed by the grammar as a PEP 695 alias (lost its hidden-assignment status), chained assignments counting calls in nested targets, and multi-line `case` patterns bypassing the label rule. Remaining differences were all intentional: labels, defaults and return annotations keeping source quoting, implicit string concatenation, parentheses and spacing; and `elif` node end positions (see Locations).
 5. **Remove `python_ast/`** and update the main spec (labels, statement rules, errors, dependencies, exit codes), AGENTS.md (allowed dependencies, architecture diagram, `python_ast` references) and the README (exit codes, warnings).
 
 ## Out of scope
