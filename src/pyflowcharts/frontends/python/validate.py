@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import ast
 import re
+import warnings
 from dataclasses import dataclass
 
 from tree_sitter import Node
@@ -40,7 +41,9 @@ def validate(src: Source, functions: list[Found], path: str) -> Validation:
         ts_line = _first_error_line(func.node)
         if ast_line is None and ts_line is None:
             continue
-        message = f"syntax error in '{func.qualname}'; function skipped"
+        # Code the interpreter accepts but the grammar does not (newer syntax) is not an error.
+        problem = "syntax error" if ast_line is not None else "unsupported syntax"
+        message = f"{problem} in '{func.qualname}'; function skipped"
         line = ast_line if ast_line is not None else ts_line
         skipped[func.qualname] = Diagnostic(path, line, message, func.qualname)
     if not file_ok and outside is None and not skipped:
@@ -51,7 +54,9 @@ def validate(src: Source, functions: list[Found], path: str) -> Validation:
 def _parses(data: bytes) -> int | None:
     """``None`` if the source parses, else the line of the syntax error."""
     try:
-        ast.parse(data.decode())
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")  # SyntaxWarnings about the user's code are not ours
+            ast.parse(data.decode())
     except SyntaxError as e:
         return e.lineno or 1
     return None

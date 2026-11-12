@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import ast
+import warnings
 
 from tree_sitter import Node
 
@@ -52,7 +53,9 @@ def signature_label(func: Node, src: Source, options: ChartOptions) -> str:
 def always_true(cond: str) -> bool:
     """Whether a ``while`` condition is a single truthy constant (then only ``break`` exits)."""
     try:
-        expr = ast.parse(cond, mode="eval").body
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            expr = ast.parse(cond, mode="eval").body
     except (SyntaxError, ValueError):
         return False
     return isinstance(expr, ast.Constant) and bool(expr.value)
