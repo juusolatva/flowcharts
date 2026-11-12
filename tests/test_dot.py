@@ -53,3 +53,9 @@ def test_renders_whole_fixture():  # every fixture chart is valid DOT
         PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).document.functions
     ):
         assert b"<svg" in render(chart, "svg")
+
+
+def test_exception_edges_are_dashed():
+    src = to_dot(chart_of("def f():\n    try:\n        a()\n    except E:\n        h()\n"))
+    dashed = [line for line in src.splitlines() if "style=dashed" in line]
+    assert len(dashed) == 1 and "label=exception" in dashed[0]
