@@ -51,3 +51,12 @@ def test_locations_use_byte_columns_and_skip_trailing_comments():
     g = func.child_by_field_name("body").children[-2]
     assert (s.location(g).line, s.location(g).column) == (2, 14)
     assert s.location(func).end_line == 2
+
+
+def test_many_live_trees_with_long_identifiers():
+    """tree-sitter 0.26.0 corrupted node positions (and crashed) in this situation."""
+    keep = []
+    for n in (10, 100, 255, 256, 300, 1000):
+        s = src(f"def {'f' * n}(): pass\ndef g(): pass\n")
+        keep.append(s)
+        assert s.location(s.tree.root_node.children[0]).end_column == n + 12

@@ -5,7 +5,7 @@ import textwrap
 import pytest
 from conftest import assert_graph_integrity
 
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 
 CORPUS = {

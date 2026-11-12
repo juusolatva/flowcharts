@@ -5,7 +5,7 @@ import graphviz
 import pytest
 
 from pyflowcharts.cli import main
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 from pyflowcharts.serialize import from_json
 
@@ -76,7 +76,7 @@ def test_bad_file_does_not_stop_others(tmp_path, capsys):
     bad = write(tmp_path, "bad.py", "def f(:\n")
     good = write(tmp_path, "good.py", "def g(): pass\n")
     assert main([str(bad), str(good), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
-    assert f"{bad}:1: error:" in capsys.readouterr().err
+    assert f"{bad}:1: warning:" in capsys.readouterr().err
     assert (tmp_path / "o/good.json").exists()
 
 
