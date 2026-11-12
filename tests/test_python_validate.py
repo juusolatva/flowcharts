@@ -67,3 +67,24 @@ def test_tree_sitter_only_errors_and_version_skew():
     except SyntaxError:  # tree-sitter accepts this PEP 758 form; this interpreter does not
         v = check("def f():\n    try:\n        pass\n    except A, B:\n        pass\n")
         assert list(v.skipped) == ["f"] and v.skipped["f"].line == 4
+
+
+def test_ast_syntax_warnings_are_neither_printed_nor_fatal(capsys):
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # a leaked SyntaxWarning would become a SyntaxError
+        v = check('def f(s):\n    return re.match("\\d", s)\n')
+    assert v == Validation({}, None)
+    assert capsys.readouterr().err == ""
+
+
+def test_grammar_only_rejection_is_reported_as_unsupported_syntax():
+    src = "def f[T = int](x: T) -> T:\n    return x\n\ndef g():\n    pass\n"
+    try:
+        ast.parse(src)
+    except SyntaxError:
+        pytest.skip("this interpreter does not accept PEP 696 defaults")
+    v = check(src)
+    assert list(v.skipped) == ["f"] and v.outside is None
+    assert v.skipped["f"].message == "unsupported syntax in 'f'; function skipped"

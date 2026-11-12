@@ -126,7 +126,8 @@ Tree-sitter's grammar accepts some invalid Python without `ERROR` or `MISSING` n
 
 Warnings:
 
-- A skipped function: `path:LINE: warning: syntax error in '<qualname>'; function skipped`, where LINE is the mapped, clamped line from step 3, or the first `ERROR`/`MISSING` node when only tree-sitter finds a problem.
+- A skipped function: `path:LINE: warning: syntax error in '<qualname>'; function skipped`, where LINE is the mapped, clamped line from step 3. When only tree-sitter finds a problem (the interpreter accepts the function, e.g. PEP 696 type-parameter defaults on a grammar that predates them), the message is `unsupported syntax in '<qualname>'; function skipped` and LINE is the first `ERROR`/`MISSING` node.
+- `ast.parse` is run with warnings suppressed: a `SyntaxWarning` about the user's code (an invalid escape such as `"\d"`) is neither printed nor allowed to become an error under `-W error`.
 - An error outside every function: `path:LINE: warning: syntax error outside functions; nearby code may be missing`, with LINE from step 2 (or step 1 in case 5). At most one such warning per file.
 - `break`/`continue` outside a loop (which both tree-sitter and `ast.parse` accept) is treated as a syntax error in that function: the builder raises `StrayLoopTransfer`, the frontend reports the transfer's line. Other compiler-only errors (duplicate parameter names, `await` outside `async`, `nonlocal` without a binding, …) are not checked and are charted as written.
 

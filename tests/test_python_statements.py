@@ -140,3 +140,12 @@ def test_type_call_target_is_an_assignment_not_a_type_alias():
 def test_multiline_case_pattern_label():
     src = "def f(x):\n    match x:\n        case (\n            A\n            | B\n        ):\n            a()\n"
     assert ("match x", "a()", "case (A | B)") in flow(chart(src))
+
+
+def test_while_constant_check_does_not_leak_syntax_warnings():
+    import warnings
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        c = chart('def f():\n    while "\\d":\n        g()\n')
+    assert ('while "\\d"', "end", "False") not in flow(c)
