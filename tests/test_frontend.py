@@ -5,6 +5,7 @@ import pytest
 from conftest import chart_of, flow
 
 from pyflowcharts.frontends import SourceError, UnsupportedLanguageError, frontend_for_path
+from pyflowcharts.frontends.base import Diagnostic, ParseResult
 from pyflowcharts.frontends.python_ast import PythonFrontend
 from pyflowcharts.ir import ChartOptions, NodeKind, Parameter, ParamKind
 
@@ -80,8 +81,10 @@ def test_hidden_parameters_and_returns():
 
 
 def test_qualnames_and_duplicates():
-    doc = PythonFrontend().parse(
-        textwrap.dedent("""
+    doc = (
+        PythonFrontend()
+        .parse(
+            textwrap.dedent("""
             def top(): pass
             class A:
                 def m(self):
@@ -92,8 +95,10 @@ def test_qualnames_and_duplicates():
                 def x(self, v): pass
             async def co(): pass
         """).encode(),
-        "t.py",
-        ChartOptions(),
+            "t.py",
+            ChartOptions(),
+        )
+        .document
     )
     assert [c.qualname for c in doc.functions] == ["top", "A.m", "A.m.inner", "A.x", "A.x@L9", "co"]
     co = doc.functions[-1]
@@ -140,7 +145,7 @@ def test_compiler_only_syntax_errors():  # ast.parse accepts these; compile() mu
 
 def test_coding_cookie():
     src = b"# -*- coding: latin-1 -*-\ndef f():\n    print('\xe9')\n"
-    doc = PythonFrontend().parse(src, "l1.py", ChartOptions())
+    doc = PythonFrontend().parse(src, "l1.py", ChartOptions()).document
     assert doc.functions[0].nodes[2].label == "print('é')"
 
 
@@ -151,7 +156,7 @@ def test_registry():
 
 
 def test_document_metadata():
-    doc = PythonFrontend().parse(b"", "empty.py", ChartOptions())
+    doc = PythonFrontend().parse(b"", "empty.py", ChartOptions()).document
     assert (doc.source, doc.language, doc.functions, doc.schema_version) == (
         "empty.py",
         "python",
@@ -240,3 +245,13 @@ def test_reveal_applies_per_block():
 def test_function_body_of_only_assignments_is_shown():
     c = chart_of("def f(self):\n    self.x = 1\n    self.y = 2\n")
     assert {("self.x = 1", "self.y = 2", None), ("self.y = 2", "end", None)} <= flow(c)
+
+
+def test_diagnostic_renders_like_errors():
+    assert str(Diagnostic("a.py", 3, "boom", "f")) == "a.py:3: warning: boom"
+    assert str(Diagnostic("a.py", None, "boom", None)) == "a.py: warning: boom"
+
+
+def test_parse_returns_result_without_warnings():
+    result = PythonFrontend().parse(b"def f(): pass\n", "t.py", ChartOptions())
+    assert isinstance(result, ParseResult) and result.warnings == ()

@@ -68,5 +68,5 @@ CORPUS = {
 @pytest.mark.parametrize("name", sorted(CORPUS))
 def test_corpus_graph_integrity(name):
     src = textwrap.dedent(CORPUS[name]).encode()
-    for chart in PythonFrontend().parse(src, f"{name}.py", ChartOptions()).functions:
+    for chart in PythonFrontend().parse(src, f"{name}.py", ChartOptions()).document.functions:
         assert_graph_integrity(chart)

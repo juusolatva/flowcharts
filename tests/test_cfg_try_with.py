@@ -124,7 +124,7 @@ def test_nested_def_is_a_node_and_its_own_chart():
 
 def test_sample_fixture_graph_integrity():
     path = Path(__file__).parent / "fixtures" / "sample.py"
-    doc = PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions())
+    doc = PythonFrontend().parse(path.read_bytes(), str(path), ChartOptions()).document
     assert len({c.qualname for c in doc.functions}) == len(doc.functions)
     for chart in doc.functions:
         ids = [n.id for n in chart.nodes]
