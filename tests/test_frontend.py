@@ -6,7 +6,7 @@ from conftest import chart_of, flow
 
 from pyflowcharts.frontends import SourceError, UnsupportedLanguageError, frontend_for_path
 from pyflowcharts.frontends.base import Diagnostic, ParseResult
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions, NodeKind, Parameter, ParamKind
 
 
@@ -54,7 +54,7 @@ def test_signature_recorded():
         P("kw", None, None, K.VAR_KEYWORD),
     ]
     assert c.returns == "bool"
-    assert c.nodes[0].label == "def f(a: int, /, b=2, *args, c, d: str='x', **kw) -> bool"
+    assert c.nodes[0].label == "def f(a: int, /, b=2, *args, c, d: str = 'x', **kw) -> bool"
 
 
 VARS = """
@@ -123,24 +123,24 @@ def test_long_labels_truncated():
     assert c.nodes[2].label == "g(" + "a" * 17 + "…"  # nodes[0]=start, nodes[1]=end
 
 
-def test_source_errors():
-    with pytest.raises(SourceError) as e:
-        PythonFrontend().parse(b"def f(:\n", "bad.py", ChartOptions())
-    assert e.value.line == 1 and str(e.value).startswith("bad.py:1: error:")
+def test_syntax_error_skips_the_function():
+    result = PythonFrontend().parse(b"def f(:\n", "bad.py", ChartOptions())
+    assert result.document.functions == []
+    (warning,) = result.warnings
+    assert (warning.line, warning.qualname) == (1, "f")
+    assert str(warning).startswith("bad.py:1: warning:")
+
+
+def test_null_bytes_are_a_source_error():
     with pytest.raises(SourceError):
         PythonFrontend().parse(b"x = 1\x00\n", "nul.py", ChartOptions())
 
 
-def test_compiler_only_syntax_errors():  # ast.parse accepts these; compile() must reject them
-    cases = [
-        (b"def f():\n    break\n", 2),
-        (b"def f():\n    continue\n", 2),
-        (b"def f():\n    x = 1\n    nonlocal x\n", 3),
-    ]
-    for src, line in cases:
-        with pytest.raises(SourceError) as e:
-            PythonFrontend().parse(src, "loop.py", ChartOptions())
-        assert e.value.line == line
+def test_break_and_continue_outside_a_loop_skip_the_function():
+    for src in (b"def f():\n    break\n", b"def f():\n    continue\n"):
+        result = PythonFrontend().parse(src, "loop.py", ChartOptions())
+        assert result.document.functions == []
+        assert [(w.line, w.qualname) for w in result.warnings] == [(2, "f")]
 
 
 def test_coding_cookie():
@@ -206,9 +206,9 @@ def test_labels_keep_source_text():
     assert 'case 0x1 | "a"' in {e.label for e in c.edges}
 
 
-def test_multiline_labels_fall_back_to_unparse():
+def test_multiline_labels_keep_source():
     c = chart_of("def f():\n    g(1,  # note\n      0x2)\n")
-    assert "g(1, 2)" in {n.label for n in c.nodes}
+    assert "g(1, 0x2)" in {n.label for n in c.nodes}
 
 
 def test_block_of_only_hidden_assignments_is_shown():

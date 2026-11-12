@@ -12,7 +12,9 @@ def parse(text, **opts):
 
 
 def test_broken_neighbour_is_skipped_and_others_charted():
-    r = parse("def good():\n    return 1\n\ndef broken(:\n    pass\n\ndef also_good():\n    return 2\n")
+    r = parse(
+        "def good():\n    return 1\n\ndef broken(:\n    pass\n\ndef also_good():\n    return 2\n"
+    )
     assert [c.qualname for c in r.document.functions] == ["good", "also_good"]
     assert [(w.line, w.qualname) for w in r.warnings] == [(4, "broken")]
     assert str(r.warnings[0]) == "t.py:4: warning: syntax error in 'broken'; function skipped"

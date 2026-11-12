@@ -5,7 +5,7 @@ import pytest
 from conftest import chart_of
 
 from pyflowcharts.backends.dot import SHAPES, render, to_dot
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")

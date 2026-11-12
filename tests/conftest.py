@@ -1,6 +1,6 @@
 import textwrap
 
-from pyflowcharts.frontends.python_ast import PythonFrontend
+from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions, FunctionChart
 
 
