@@ -70,3 +70,8 @@ def test_names_are_nfkc_normalized_like_python():
     )
     assert [f.qualname for f in fs] == [composed, f"{composed}@L2", "fix.m"]
     assert fs[1].name == composed
+
+
+def test_parameter_names_are_nfkc_normalized_like_python():
+    s, fs = found("def f(café, *ﬁ, **cafés): pass\n")
+    assert [p.name for p in parameters(fs[0].node, s)] == ["café", "fi", "cafés"]

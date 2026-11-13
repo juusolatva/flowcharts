@@ -108,7 +108,7 @@ def _parameter(node: Node, kind: ParamKind, src: Source) -> Parameter:
 def _target(node: Node) -> str:
     """The parameter name: the identifier itself, or the one inside ``*``/``**``."""
     if node.type == "identifier":
-        return (node.text or b"").decode()
+        return identifier(node)
     return _target(node.named_children[0])
 
 
