@@ -94,3 +94,10 @@ def test_case_clash_quiet_without_function_files(tmp_path, capsys):
     doc = parse("def Foo(): pass\ndef foo(): pass\n")
     Writer(tmp_path, ["json"]).write(doc, PurePosixPath("t"))
     assert capsys.readouterr().err == ""
+
+
+def test_full_case_folding_is_not_a_clash(tmp_path, capsys):
+    # File systems map case per character: "ß" and "ss" stay distinct.
+    doc = parse("def ß(): pass\ndef ss(): pass\n")
+    Writer(tmp_path, ["dot"]).write(doc, PurePosixPath("t"))
+    assert capsys.readouterr().err == ""

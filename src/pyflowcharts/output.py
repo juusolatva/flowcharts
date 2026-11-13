@@ -51,7 +51,7 @@ class Writer:
             self._save(base.parent / f"{base.name}.json", to_json(doc))
         if doc.module is not None:
             self._chart(doc.module, base.parent, base.name)
-        if set(self.formats) - {"json"}:
+        if any(f != "json" for f in self.formats):
             _warn_case_clashes(doc)
         for chart in doc.functions:
             self._chart(chart, base, chart.qualname)
@@ -133,10 +133,11 @@ class Writer:
 
 
 def _warn_case_clashes(doc: Document) -> None:
-    """Warn about function charts whose file names differ only in case."""
+    """Warn about function charts whose file names differ only in case. Uses ``lower()``, not
+    ``casefold()``: file systems map case per character, so ``ß`` and ``ss`` stay distinct."""
     groups: dict[str, list[str]] = {}
     for chart in doc.functions:
-        groups.setdefault(chart.qualname.casefold(), []).append(chart.qualname)
+        groups.setdefault(chart.qualname.lower(), []).append(chart.qualname)
     for names in groups.values():
         if len(names) > 1:
             quoted = [f"'{name}'" for name in names]
