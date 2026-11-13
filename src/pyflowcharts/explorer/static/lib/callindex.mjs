@@ -52,8 +52,9 @@ export function buildCallIndex(state) {
     slot(out, fromDoc, fromName).push(to);
     slot(inc, toDoc, toName).push(from);
   }
+  const read = (map, doc, qualname) => (map.get(JSON.stringify([doc, qualname])) ?? []).slice();
   return {
-    callers: (doc, qualname) => slot(inc, doc, qualname).slice(),
-    callees: (doc, qualname) => slot(out, doc, qualname).slice(),
+    callers: (doc, qualname) => read(inc, doc, qualname),
+    callees: (doc, qualname) => read(out, doc, qualname),
   };
 }
