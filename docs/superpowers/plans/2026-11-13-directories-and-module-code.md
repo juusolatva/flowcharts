@@ -50,7 +50,10 @@ def test_json_shape(doc):  # replaces the existing test
     assert data["schema_version"] == 2
     assert list(data) == ["source", "language", "functions", "module", "schema_version"]
     assert data["module"] is None
-    assert list(data["functions"][0])[:4] == ["qualname", "location", "nodes", "edges"]
+    assert list(data["functions"][0]) == ["qualname", "location", "nodes", "edges",
+                                          "name", "is_async", "parameters", "returns"]
+    assert data["functions"][0]["nodes"][0]["kind"] == "start"
+    assert data["functions"][0]["parameters"][0]["kind"] == "positional_or_keyword"
 
 def test_round_trip_with_module(doc):
     doc.module = Chart(qualname=MODULE_QUALNAME, location=doc.functions[0].location,
@@ -166,9 +169,14 @@ def test_main_block_flow():
     assert all(n.id.startswith("<module>#") for n in m.nodes)
     assert_graph_integrity(m)
 
-def test_module_location_spans_first_to_last_token():
+def test_module_location_spans_first_statement_to_last_token():
     m = parse("\n\nmain()\nother()\n# c\n").document.module
     assert (m.location.line, m.location.end_line) == (3, 4)
+    m = parse("#!/usr/bin/env python3\n# head\n\nmain()\n").document.module
+    assert (m.location.line, m.location.column, m.location.end_line) == (4, 0, 4)
+
+def test_assignment_with_comment_inside_is_not_work():
+    assert parse("x = (  # c\n    1)\ny = \\\n    2\n").document.module is None
 
 def test_no_module_option():
     r = parse("main()\nbreak\n", show_module=False)
@@ -186,7 +194,12 @@ def test_stray_break_skips_module_chart():
     assert r.warnings[0].qualname == "<module>"
 
 def test_unsupported_top_level_syntax_skips_module_chart():
-    r = parse("type Box[T = int] = list[T]\nmain()\ndef g(): pass\n")
+    src = "type Box[T = int] = list[T]\ndef g(): pass\n"  # no work: the error check must run first
+    try:
+        ast.parse(src)
+    except SyntaxError:
+        pytest.skip("this interpreter does not accept PEP 696 defaults")
+    r = parse(src)
     assert r.document.module is None and [c.qualname for c in r.document.functions] == ["g"]
     assert [str(w) for w in r.warnings] == ["t.py:1: warning: unsupported syntax in module code; module chart skipped"]
     assert r.warnings[0].qualname == "<module>"
@@ -196,7 +209,11 @@ def test_unsupported_top_level_syntax_skips_module_chart():
 
 - [ ] **Step 2: Run** `uv run pytest tests/test_python_module.py -v`. Expected: FAIL (`document.module` is always `None`).
 
-- [ ] **Step 3: Implement.** `does_work` scans the root's named children (no extras), skipping a leading docstring. A child is a declaration if its type is `import_statement`, `import_from_statement`, `future_import_statement`, `function_definition`, `decorated_definition`, `class_definition`, `type_alias_statement`, `pass_statement` or `global_statement`, or if it is an `expression_statement` whose named children are all `assignment`, `augmented_assignment` or `ellipsis`. Any other child means the top level does work. `module_chart` calls `build_chart(MODULE_QUALNAME, f"module {PurePath(path).stem}", src.location(root), convert_statements(root, src, options), options)` and wraps the result in a `Chart`. In `PythonFrontend.parse`, inside the existing `RecursionError` guard and only when `options.show_module and validation.outside is None`, check in this order:
+- [ ] **Step 3: Implement.** Make `statements._named` and `statements._is_docstring` public (`named`, `is_docstring`) and use them from `module.py` rather than duplicating them. `does_work` scans `named(root)`, skipping a leading docstring. A child is a declaration if:
+  - its type is `import_statement`, `import_from_statement`, `future_import_statement`, `function_definition`, `decorated_definition`, `class_definition`, `type_alias_statement`, `pass_statement` or `global_statement`, or
+  - it is an `expression_statement` with exactly one child in `named(child)` (extras removed, as in `_Converter._expression`), and that child's type is `assignment`, `augmented_assignment` or `ellipsis`.
+
+  Any other child means the top level does work. `module_chart` calls `build_chart(MODULE_QUALNAME, f"module {PurePath(path).stem}", location, convert_statements(root, src, options), options)` and wraps the result in a `Chart`. Its `location` starts at the first child in `named(root)` (`start_point`) and ends where `src.location(root)` ends, so leading comments such as a shebang are not included. `Source.location` itself does not change. In `PythonFrontend.parse`, inside the existing `RecursionError` guard and only when `options.show_module and validation.outside is None`, check in this order:
   1. `first_error_line(root)` is not `None` → `Diagnostic(path, line, UNSUPPORTED, MODULE_QUALNAME)`.
   2. otherwise, if `does_work(root)`, build the chart; on `StrayLoopTransfer` → `Diagnostic(path, e.loc.line, STRAY, MODULE_QUALNAME)`.
 
@@ -291,8 +308,8 @@ def test_missing_graphviz_reported_once_for_module_and_functions(tmp_path, monke
   - **Arguments.** A path that is not a directory, including a missing one, is an explicit input with key `PurePosixPath(path.stem)`, passed through unchecked. A directory (`is_dir()`, following a symlinked argument) is walked.
   - **What the walk keeps.** Prune directories named `__pycache__`, directories that are symlinks, names starting with `.` below the argument, and excluded paths. Keep only regular files (`is_file()`) whose `suffix.lower()` is in `supported_extensions()`.
   - **Order and keys.** Collect every walked file, then sort by `rel.parts`. Key = `rel.with_suffix("")` as a `PurePosixPath`. Build it from the parts so a dotted stem keeps its full name: `PurePosixPath(*rel.parent.parts, Path(rel.name).stem)`.
-  - **Unreadable directories.** Use `os.walk(top, onerror=…)`. Each `OSError` adds `f"{err.filename}: error: cannot read directory: {err.strerror}"` to `errors`.
-  - **Empty directory.** If a directory argument yields no files (counted before cross-argument dedupe), add `f"warning: {path}: no source files found"` to `warnings`.
+  - **Unreadable directories.** Use `os.walk(top, onerror=…)`. Each `OSError` adds `f"{err.filename or top}: error: cannot read directory: {err.strerror or err}"` to `errors`.
+  - **Empty directory.** If a directory argument yields no files (counted before cross-argument dedupe) and its walk reported no error, add `f"warning: {path}: no source files found"` to `warnings`. An unreadable argument gets only the error.
   - **Dedupe.** Dedupe by `path.resolve()`. The first occurrence keeps its path and key; `explicit` becomes true if any occurrence was explicit.
   - **Exclude matching**, for relative path `rel` and `is_dir`:
 
@@ -322,6 +339,14 @@ def test_hidden_pycache_and_dir_symlinks_skipped(tmp_path):
     (tmp_path / "src/broken.py").symlink_to(tmp_path / "missing.py")
     assert keys(expand([tmp_path / "src"], [])) == ["ok"]
 
+def test_file_symlink_to_regular_file_is_charted(tmp_path):
+    tree(tmp_path, "real/m.py", "src/a.py"); (tmp_path / "src/l.py").symlink_to(tmp_path / "real/m.py")
+    assert keys(expand([tmp_path / "src"], [])) == ["a", "l"]
+
+def test_hidden_directory_argument_is_walked(tmp_path):
+    tree(tmp_path, ".hidden/x.py")
+    assert keys(expand([tmp_path / ".hidden"], [])) == ["x"]
+
 def test_symlinked_directory_argument_is_walked(tmp_path):
     tree(tmp_path, "real/m.py"); (tmp_path / "ln").symlink_to(tmp_path / "real", target_is_directory=True)
     assert keys(expand([tmp_path / "ln"], [])) == ["m"]
@@ -335,17 +360,29 @@ def test_unreadable_directory_is_an_error_and_walk_continues(tmp_path):
         (tmp_path / "locked").chmod(0o755)
     assert keys(e) == ["ok"] and e.errors == [f"{tmp_path / 'locked'}: error: cannot read directory: Permission denied"]
 
+@pytest.mark.skipif(os.geteuid() == 0, reason="root can read everything")
+def test_unreadable_directory_argument_gets_only_the_error(tmp_path):
+    (tmp_path / "locked").mkdir(); (tmp_path / "locked").chmod(0)
+    try:
+        e = expand([tmp_path / "locked"], [])
+    finally:
+        (tmp_path / "locked").chmod(0o755)
+    assert len(e.errors) == 1 and e.warnings == []
+
 def test_explicit_files_pass_through(tmp_path):
     e = expand([tmp_path / "nope.py", tmp_path / "x.js"], [])
     assert [(i.key.as_posix(), i.explicit) for i in e.inputs] == [("nope", True), ("x", True)]
 
 @pytest.mark.parametrize("patterns, expected", [
-    (["venv"], ["a", "pkg/m", "x_pb2"]), (["*_pb2.py"], ["a", "pkg/m", "venv/v"]),
+    (["venv"], ["a", "pkg/m", "pkg/sub/s", "x_pb2"]),
+    (["*_pb2.py"], ["a", "pkg/m", "pkg/sub/s", "venv/v"]),
     (["pkg/*"], ["a", "venv/v", "x_pb2"]), (["pkg/"], ["a", "venv/v", "x_pb2"]),
-    (["m.py/"], ["a", "pkg/m", "venv/v", "x_pb2"]), (["PKG"], ["a", "pkg/m", "venv/v", "x_pb2"]),
+    (["m.py/"], ["a", "pkg/m", "pkg/sub/s", "venv/v", "x_pb2"]),
+    (["PKG"], ["a", "pkg/m", "pkg/sub/s", "venv/v", "x_pb2"]),
+    (["pkg/sub/"], ["a", "pkg/m", "venv/v", "x_pb2"]),
 ])
 def test_exclude(tmp_path, patterns, expected):
-    tree(tmp_path, "a.py", "pkg/m.py", "venv/v.py", "x_pb2.py")
+    tree(tmp_path, "a.py", "pkg/m.py", "pkg/sub/s.py", "venv/v.py", "x_pb2.py")
     assert keys(expand([tmp_path], patterns)) == expected
 
 @pytest.mark.skipif(os.geteuid() == 0, reason="root can read everything")
@@ -372,11 +409,14 @@ def test_empty_directory_warns_but_repeated_directory_does_not(tmp_path):
     assert expand([tmp_path / "d", tmp_path / "d"], []).warnings == []
 
 def test_collisions(tmp_path):
-    tree(tmp_path, "a/x.py", "b/x.py", "pkg/mod.py", "pkg/mod/__init__.py", "q/m.py", "q/m_extra.py")
+    tree(tmp_path, "a/x.py", "b/x.py", "pkg/mod.py", "pkg/mod/__init__.py", "q/m.py", "q/m_extra.py",
+         "t/mod/__init__.py")
     assert "both map to 'x'" in collision_error(expand([tmp_path / "a", tmp_path / "b"], []).inputs)
     assert "both map to 'x'" in collision_error(expand([tmp_path / "a/x.py", tmp_path / "b"], []).inputs)
     msg = collision_error(expand([tmp_path / "pkg"], []).inputs)
-    assert "maps to 'mod' and" in msg and "share the directory 'mod'" in msg
+    assert "maps to 'mod' and" in msg and "share the directory 'mod'" in msg  # longer key first
+    msg = collision_error(expand([tmp_path / "pkg/mod.py", tmp_path / "t"], []).inputs)
+    assert "maps to 'mod' and" in msg and "share the directory 'mod'" in msg  # shorter key first
     assert collision_error(expand([tmp_path / "q"], []).inputs) is None
 
 def test_dot_argument(tmp_path, monkeypatch):  # Review Focus 1
@@ -451,7 +491,7 @@ def test_walked_empty_file_does_not_warn(tmp_path, capsys):
 def test_explicit_file_also_walked_still_warns(tmp_path, capsys):
     empty = write(tmp_path / "d", "e.py", "")
     assert main([str(tmp_path / "d"), str(empty), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
-    assert f"warning: {tmp_path / 'd'}/e.py: nothing to chart" in capsys.readouterr().err
+    assert f"warning: {empty}: nothing to chart" in capsys.readouterr().err
 
 def test_empty_directory_warning(tmp_path, capsys):
     (tmp_path / "e").mkdir()
@@ -516,7 +556,7 @@ def test_syntax_error_only_file_has_no_nothing_to_chart(tmp_path, capsys):
 - [ ] **Step 2: Run** `uv run pytest tests/test_cli.py -v`. Expected: the new tests FAIL.
 - [ ] **Step 3: Implement** the changes listed under Interfaces. Remove `_unique_paths` and `_stem_collision`; `inputs.py` replaces them.
 - [ ] **Step 4: Run** `uv run pytest && uv run ruff check`, and check `wc -l src/pyflowcharts/cli.py` (target < 300). Expected: pass.
-- [ ] **Step 5: Smoke test**: `uv run pyflowcharts src -o /tmp/claude-1000/-home-excali-github-flowcharts/4608eb90-8b7c-425e-9e52-dc5a66cc77cc/scratchpad/self -f json mermaid`. Expected: exit 0, a mirrored `pyflowcharts/…` tree, and no module charts, because the package's top level only declares things.
+- [ ] **Step 5: Smoke test**: `uv run pyflowcharts src -o /tmp/pyflowcharts-self -f json mermaid`. Expected: exit 0, a mirrored `pyflowcharts/…` tree, and exactly one module chart, `pyflowcharts/cfg/finally_.mmd`, because of its top-level `if TYPE_CHECKING:` block.
 - [ ] **Step 6: Commit** `feat(cli): accept directories, --exclude, --no-module and --function '<module>'`
 
 ---
@@ -540,10 +580,11 @@ def test_syntax_error_only_file_has_no_nothing_to_chart(tmp_path, capsys):
   - Known simplifications: drop directory recursion and module-level code; add "class bodies are charted only through their methods".
 - [ ] **Step 3: `README.md`.**
   - Schema version 2.
+  - Known simplifications: remove the two bullets that PR #2 made out of date (exceptions drawn from the `try` node; `return`/`raise` skipping `finally`) and replace them with the current one: handlers are assumed to catch whatever reaches them.
   - Usage lines for `pyflowcharts src/`, `--exclude`, `--no-module` and `--function '<module>'`.
   - A sentence on when module charts appear.
   - Exit-code note: "nothing to chart".
   - Remove directory recursion and module code from the known simplifications.
 - [ ] **Step 4: New spec status.** Set it to "Implemented; folded into the main spec."
-- [ ] **Step 5: Verify** with `uv run pytest && uv run ruff check`, and `grep -n "no functions found\|schema version 1\|Directory recursion" README.md AGENTS.md docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`. Expected: tests pass and grep prints nothing.
+- [ ] **Step 5: Verify** with `uv run pytest && uv run ruff check`, and `grep -in "no functions\|schema version 1\|(= 1)\|not supported yet\|out of scope for the MVP\|edges from the .try. node\|straight to the end" README.md AGENTS.md docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`. Expected: tests pass and grep prints nothing.
 - [ ] **Step 6: Commit** `docs: describe directory inputs and module charts`

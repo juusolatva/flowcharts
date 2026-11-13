@@ -81,7 +81,7 @@ With `--no-module` (`ChartOptions.show_module = False`, added as the last field 
 
 The module's top-level statements, with a leading docstring dropped, go through the same statement conversion as a function body, with all its rules: imports and unhandled statements become process nodes, `def`/`class` become process nodes like nested definitions, plain assignments are hidden unless `--variables` is given, the value contains a call, or the block would otherwise look empty.
 
-The chart is built with `build_chart("<module>", "module <stem>", location, body, options)`, where `<stem>` is the file's stem as given to the frontend (`load` for `src/pkg/io/load.py`) and `location` is `Source.location(root)`: from the module's first token to its last (leading and trailing blank lines and comments are not included). Its start node is labelled `module <stem>`, its end node `end`.
+The chart is built with `build_chart("<module>", "module <stem>", location, body, options)`, where `<stem>` is the file's stem as given to the frontend (`load` for `src/pkg/io/load.py`) and `location` runs from the start of the module's first statement to the end of its last token, so leading comments (a shebang, a coding line) and trailing blank lines and comments are not included. `Source.location` does not change; the module chart takes its end from `Source.location(root)`. Its start node is labelled `module <stem>`, its end node `end`.
 
 The frontend module `frontends/python/module.py` holds the "does work" check and builds the chart. `statements.py` gets `convert_statements(stmts, src, options)`, which drops a leading docstring and converts a statement list; `convert_body(func, …)` keeps its signature and calls it, and the module chart calls it with the root's children.
 
@@ -146,7 +146,7 @@ Rules:
 ### Warnings
 
 - `warning: PATH: no functions found` becomes `warning: PATH: nothing to chart`, printed when a file has no function charts, no module chart and no warnings at all (so a file whose only problem is a syntax error gets just that warning). It is decided on the full parse result, before `--function` filtering, so a file that merely has no requested function is not reported. It is only printed for files named explicitly; otherwise every empty `__init__.py` in a walk would trigger it.
-- A directory argument whose walk yields no files gives `warning: DIR: no source files found` and does not change the exit code. This is decided per argument, before deduplication across arguments, so `pyflowcharts dir/ dir/` does not warn.
+- A directory argument whose walk yields no files, and reports no read error, gives `warning: DIR: no source files found` and does not change the exit code. An unreadable directory argument gets only the `cannot read directory` error. This is decided per argument, before deduplication across arguments, so `pyflowcharts dir/ dir/` does not warn.
 - A missing path is reported as today: `path: error: no such file`.
 
 ## `--function`
