@@ -122,7 +122,7 @@ pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 - `OUTDIR/K.json`: one JSON document per source file (when `json` is selected).
 - `OUTDIR/K.<ext>`: the module chart for `dot`, `svg`, `png`, `mermaid` (`.mmd`).
 - `OUTDIR/K/<qualname>.<ext>`: one file per function. Directories are created only for files that are written.
-- `OUTDIR/callgraph.<ext>`: the run's call graph for `dot`, `svg`, `png`, `mermaid`, unless `--no-call-graph` is given or no document has a chart. With `--function` it shows only the selected charts, while the JSON keeps each chart's full calls. The output key `callgraph` is reserved while the call graph is enabled.
+- `OUTDIR/callgraph.<ext>`: the run's call graph for `dot`, `svg`, `png`, `mermaid`, unless `--no-call-graph` is given or no document has a chart. With `--function` it shows only the selected charts, while the JSON keeps each chart's full calls. The output key `callgraph` is reserved while the call graph will be written.
 - `--function` restricts all outputs to the given qualnames; `<module>` selects module charts. It accepts several names (`--function a b`) and can be repeated (`--function a --function b`). The list of available names is deduplicated across files. Put the input paths before options that take several values.
 
 ## Errors and exit codes
@@ -134,7 +134,7 @@ pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 | Undecodable source, null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
 | Unknown `--function` name | error listing the available qualnames | 1 |
 | Two inputs with the same output key, or one key a directory prefix of another (`pkg/mod.py` beside `pkg/mod/`) | `error: output name collision: …` before anything is written | 1 |
-| A file's output key is `callgraph` while the call graph is enabled | `error: output name collision: PATH maps to 'callgraph'; it is reserved for the call graph; …` before anything is written | 1 |
+| A file's output key is `callgraph` while the call graph will be written | `error: output name collision: PATH maps to 'callgraph'; it is reserved for the call graph; …` before anything is written | 1 |
 | Top-level `break`/`continue` outside a loop | `path:line: warning: syntax error in module code; module chart skipped`; other charts still written | 1 |
 | Tree-sitter misreads top-level syntax that `ast` accepts | `path:line: warning: unsupported syntax in module code; module chart skipped`; other charts still written | 1 |
 | Directory that cannot be read | `DIR: error: cannot read directory: reason`; the rest of the walk continues | 1 |
