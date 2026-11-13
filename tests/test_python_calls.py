@@ -248,18 +248,8 @@ def f():
         ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
         ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),
         # submodule imports under one name: the longest module comes first
-        (
-            "import a.b\nimport a.c\ndef f():\n    a.c.f()\n",
-            "f",
-            "a.c.f",
-            [("a.c", "f"), ("a", "c.f")],
-        ),
-        (
-            "import a.c\nimport a.b\ndef f():\n    a.c.f()\n",
-            "f",
-            "a.c.f",
-            [("a.c", "f"), ("a", "c.f")],
-        ),
+        ("import a.b\nimport a.c\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
+        ("import a.c\nimport a.b\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
         ("import a.b\nimport a.c\ndef f():\n    a.g()\n", "f", "a.g", [("a", "g")]),
         # unrelated imports bound to one name keep source order (the first one is preferred)
         (
@@ -268,8 +258,22 @@ def f():
             "impl.run",
             [("fast", "run"), ("pkg.slow", "run")],
         ),
-        # each import still counts on its own (it may be in one branch of a try or if)
-        ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", [("a", "c")]),
+        # an import that may not run (in a try or if) counts on its own; one that always runs
+        # makes its modules certain, so shorter fallbacks through them are dropped
+        ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", []),
+        ("def f():\n    import a.b\n    import a.c\n    a.c()\n", "f", "a.c", []),
+        (
+            "try:\n    import a.b\nexcept ImportError:\n    import a.c\ndef f():\n    a.c.f()\n",
+            "f",
+            "a.c.f",
+            [("a.c", "f"), ("a", "c.f")],
+        ),
+        (
+            "import a.b\nif x:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
         (
             "try:\n    import a.b\nexcept ImportError:\n    import a.b.c\ndef f():\n    a.b.c()\n",
             "f",
@@ -280,7 +284,7 @@ def f():
             "import a.b.c\nimport a.b\ndef f():\n    a.b.c.d()\n",
             "f",
             "a.b.c.d",
-            [("a.b.c", "d"), ("a.b", "c.d")],
+            [("a.b.c", "d")],
         ),
         ("import x.y as z\ndef f():\n    z.C.m()\n", "f", "z.C.m", [("x.y", "C.m")]),
         ("import x.y as z\ndef f():\n    x.g()\n", "f", "x.g", []),

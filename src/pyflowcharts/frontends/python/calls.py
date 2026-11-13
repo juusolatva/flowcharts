@@ -72,10 +72,12 @@ class _Name:
 @dataclass(frozen=True)
 class _Module:
     """``import x.y`` (``base`` ``x``, reachable ``x`` and ``x.y``) or ``import x.y as z``
-    (``base`` and reachable ``x.y`` only)."""
+    (``base`` and reachable ``x.y`` only). ``certain`` when the import always runs: it sits
+    directly in a module's or function's body, not in a ``try``, ``if`` or other block."""
 
     base: str
     reachable: frozenset[str]
+    certain: bool = False
 
 
 type _Binding = _Name | _Module
@@ -162,16 +164,17 @@ class Resolver:
                     self._index(child, prefix, scope, cls)
 
     def _import(self, stmt: Node, scope: _Scope) -> None:
+        certain = _always_runs(stmt)
         for name in stmt.children_by_field_name("name"):
             if name.type == "aliased_import":
                 dotted, alias = name.child_by_field_name("name"), name.child_by_field_name("alias")
                 if dotted is not None and alias is not None:
                     target = _text(dotted)
-                    scope.bind(_text(alias), _Module(target, frozenset({target})))
+                    scope.bind(_text(alias), _Module(target, frozenset({target}), certain))
             elif name.type == "dotted_name":
                 parts = _text(name).split(".")
                 reachable = frozenset(".".join(parts[:i]) for i in range(1, len(parts) + 1))
-                scope.bind(parts[0], _Module(parts[0], reachable))
+                scope.bind(parts[0], _Module(parts[0], reachable, certain))
 
     def _import_from(self, stmt: Node, scope: _Scope) -> None:
         source = stmt.child_by_field_name("module_name")
@@ -251,9 +254,34 @@ def _import_candidates(bindings: list[_Binding], rest: list[str]) -> list[CallRe
             case _Name():
                 out += _through(binding, rest)
             case _Module(base) if base in packages:
-                refs = [ref for module in packages.pop(base) for ref in _through(module, rest)]
-                out += sorted(refs, key=lambda ref: -ref.module.count("."))
+                out += _package_candidates(packages.pop(base), rest)
     return out
+
+
+def _package_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef]:
+    """Candidates through the ``import`` bindings of one package, the longest module first.
+    A module reachable through an import that always runs is certainly a module, so shorter
+    fallbacks through it are dropped (none at all when the whole chain is a module)."""
+    full = modules[0].base.split(".") + rest
+    certain = {path for module in modules if module.certain for path in module.reachable}
+    known = next((k for k in range(len(full), 0, -1) if ".".join(full[:k]) in certain), 0)
+    if known == len(full):
+        return []  # the chain certainly names a module, and modules are not called
+    refs = [ref for module in modules for ref in _through(module, rest)]
+    refs = [ref for ref in refs if ref.module.count(".") + 1 >= known]
+    return sorted(refs, key=lambda ref: -ref.module.count("."))
+
+
+def _always_runs(stmt: Node) -> bool:
+    """Whether ``stmt`` sits directly in a module's or function's body."""
+    parent = stmt.parent
+    if parent is None or parent.type == "module":
+        return True
+    return (
+        parent.type == "block"
+        and parent.parent is not None
+        and (parent.parent.type == "function_definition")
+    )
 
 
 def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:
