@@ -34,7 +34,7 @@ def running_server(tmp_path: Path) -> Iterator[RunningServer]:
     stop = threading.Event()
     workspace = Workspace([source], [], ChartOptions(), stop=stop)
     server = ExplorerServer(workspace, 0, TOKEN, stop)
-    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread = threading.Thread(target=lambda: server.serve_forever(poll_interval=0.01), daemon=True)
     thread.start()
     try:
         yield RunningServer(

@@ -1,10 +1,19 @@
 import shutil
+import socket
+import struct
 import threading
+import time
 
 import pytest
 from explorer_helpers import header, request
 
-from pyflowcharts.explorer.server import SECURITY_HEADERS, ExplorerServer, shutdown
+from pyflowcharts.explorer.server import (
+    SECURITY_HEADERS,
+    ExplorerServer,
+    shutdown,
+    summary,
+    watch,
+)
 from pyflowcharts.explorer.workspace import Workspace
 from pyflowcharts.ir import ChartOptions
 
@@ -180,11 +189,160 @@ def test_handler_uses_one_snapshot_per_request(running_server, monkeypatch):
     assert len(calls) == 1
 
 
-def test_api_events_is_not_routed_yet(running_server):
+def open_stream(rs, *, host=None, cookie=True):
+    """Open ``/api/events`` on a raw socket; the caller closes it."""
+    sock = socket.create_connection(("127.0.0.1", rs.port), timeout=5)
+    lines = ["GET /api/events HTTP/1.1", f"Host: {host or f'127.0.0.1:{rs.port}'}"]
+    if cookie:
+        lines.append(f"Cookie: {rs.cookie}")
+    sock.sendall(("\r\n".join(lines) + "\r\n\r\n").encode())
+    return sock
+
+
+def read_until(sock, marker: bytes) -> bytes:
+    data = b""
+    while marker not in data:
+        chunk = sock.recv(4096)
+        assert chunk, f"stream closed before {marker!r}: {data!r}"
+        data += chunk
+    return data
+
+
+def test_event_stream_sends_initial_generation(running_server):
+    with open_stream(running_server) as sock:
+        data = read_until(sock, b"data: 1\n\n")
+    head = data.partition(b"\r\n\r\n")[0].decode().lower()
+    assert data.startswith(b"HTTP/1.0 200")
+    assert "content-type: text/event-stream" in head
+    assert "cache-control: no-store" in head
+    assert "content-length" not in head
+    assert "x-content-type-options: nosniff" in head
+    assert b"event: generation\ndata: 1\n\n" in data
+
+
+def test_event_stream_requires_cookie_and_host(running_server):
+    port = running_server.port
+    assert request(port, "GET", "/api/events")[0] == 403
     status, _, _ = request(
-        running_server.port, "GET", "/api/events", headers=authed(running_server)
+        port, "GET", "/api/events", host=f"evil.example:{port}", headers=authed(running_server)
     )
-    assert status == 404
+    assert status == 403
+
+
+def test_event_stream_reports_new_generation(running_server, tmp_path):
+    with open_stream(running_server) as sock:
+        read_until(sock, b"data: 1\n\n")
+        source = tmp_path / "a.py"
+        source.write_text("def f():\n    return 1\n\n\ndef g():\n    pass\n")
+        assert running_server.workspace.refresh()
+        running_server.server.notify()
+        read_until(sock, b"data: 2\n\n")
+
+
+def test_client_disconnect_is_quiet(running_server, capsys, monkeypatch):
+    monkeypatch.setattr("pyflowcharts.explorer.server.PING_SECONDS", 0.05)
+    sock = open_stream(running_server)
+    read_until(sock, b"data: 1\n\n")
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_LINGER, struct.pack("ii", 1, 0))
+    sock.close()  # reset: the stream's next ping write fails
+    time.sleep(0.5)  # several ping intervals
+    assert request(running_server.port, "GET", "/", headers=authed(running_server))[0] == 200
+    assert "Traceback" not in capsys.readouterr().err
+
+
+def test_shutdown_with_several_open_streams_is_prompt(running_server):
+    socks = [open_stream(running_server) for _ in range(5)]
+    try:
+        for sock in socks:
+            read_until(sock, b"data: 1\n\n")
+        started = time.monotonic()
+        shutdown(running_server.server, running_server.server.stop)
+        assert time.monotonic() - started < 2.0
+    finally:
+        for sock in socks:
+            sock.close()
+
+
+def snapshot_of(tmp_path, files: dict[str, str]):
+    paths = []
+    for name, text in files.items():
+        path = tmp_path / name
+        path.write_text(text)
+        paths.append(path)
+    workspace = Workspace(paths, [], ChartOptions(), stop=threading.Event())
+    return workspace.current()
+
+
+def test_summary_counts_and_plurals(tmp_path):
+    one = snapshot_of(tmp_path, {"a.py": "def f():\n    pass\n"})
+    assert summary(one) == "re-parsed 1 file (generation 1), 0 warnings"
+    broken = "def g():\n    x = = 1\n"
+    two = snapshot_of(tmp_path, {"a.py": "def f():\n    pass\n", "b.py": broken})
+    assert summary(two) == "re-parsed 2 files (generation 1), 1 warning"
+
+
+class FakeServer:
+    def __init__(self) -> None:
+        self.notified = 0
+
+    def notify(self) -> None:
+        self.notified += 1
+
+
+class OneLoopStop:
+    """A stop event that reports not-set once, then set; ``wait`` records its timeouts."""
+
+    def __init__(self, loops: int = 1) -> None:
+        self.loops = loops
+        self.waits: list[float] = []
+
+    def is_set(self) -> bool:
+        return self.loops <= 0
+
+    def wait(self, timeout: float) -> bool:
+        self.waits.append(timeout)
+        self.loops -= 1
+        return self.is_set()
+
+
+def test_watch_logs_and_notifies(tmp_path):
+    source = tmp_path / "a.py"
+    source.write_text("def f():\n    pass\n")
+    workspace = Workspace([source], [], ChartOptions(), stop=threading.Event())
+    source.write_text("def f():\n    return 1\n\n\ndef g():\n    pass\n")
+    server, stop, lines = FakeServer(), OneLoopStop(), []
+    watch(workspace, server, stop, interval=0.25, log=lines.append)
+    assert lines == ["re-parsed 1 file (generation 2), 0 warnings"]
+    assert server.notified == 1
+    assert stop.waits == [0.25]
+
+
+def test_watch_does_not_notify_without_changes(tmp_path):
+    source = tmp_path / "a.py"
+    source.write_text("def f():\n    pass\n")
+    workspace = Workspace([source], [], ChartOptions(), stop=threading.Event())
+    server, lines = FakeServer(), []
+    watch(workspace, server, OneLoopStop(), log=lines.append)
+    assert lines == []
+    assert server.notified == 0
+
+
+def test_watch_survives_refresh_errors():
+    class Flaky:
+        def __init__(self) -> None:
+            self.calls = 0
+
+        def refresh(self) -> bool:
+            self.calls += 1
+            if self.calls == 1:
+                raise PermissionError("denied")
+            return False
+
+    workspace, server, stop, lines = Flaky(), FakeServer(), OneLoopStop(2), []
+    watch(workspace, server, stop, log=lines.append)
+    assert workspace.calls == 2
+    assert lines == ["error: refresh failed: denied"]
+    assert len(stop.waits) == 2
 
 
 @pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")

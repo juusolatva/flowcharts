@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import sys
 import threading
+from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
@@ -12,7 +13,7 @@ from urllib.parse import parse_qs, urlsplit
 
 from pyflowcharts.explorer import api
 from pyflowcharts.explorer.assets import load_asset
-from pyflowcharts.explorer.workspace import Workspace
+from pyflowcharts.explorer.workspace import Snapshot, Workspace
 
 SECURITY_HEADERS = {
     "Content-Security-Policy": "default-src 'self'; style-src 'self' 'unsafe-inline'",
@@ -22,7 +23,8 @@ SECURITY_HEADERS = {
 DISCONNECTS = (BrokenPipeError, ConnectionResetError)
 STATIC_PREFIX = "/static/"
 API_PREFIX = "/api/"
-EVENTS_PATH = "/api/events"  # served from Task 10 on
+EVENTS_PATH = "/api/events"
+PING_SECONDS = 15.0
 
 
 class ExplorerServer(ThreadingHTTPServer):
@@ -37,6 +39,11 @@ class ExplorerServer(ThreadingHTTPServer):
         self.stop = stop
         self.events = threading.Condition()
 
+    def notify(self) -> None:
+        """Wake every open event stream."""
+        with self.events:
+            self.events.notify_all()
+
     def handle_error(self, request: Any, client_address: Any) -> None:
         if not isinstance(sys.exc_info()[1], DISCONNECTS):
             super().handle_error(request, client_address)
@@ -45,10 +52,38 @@ class ExplorerServer(ThreadingHTTPServer):
 def shutdown(server: ExplorerServer, stop: threading.Event) -> None:
     """Stop event streams first, then the serve loop, then close the socket."""
     stop.set()
-    with server.events:
-        server.events.notify_all()
+    server.notify()
     server.shutdown()
     server.server_close()
+
+
+def summary(snapshot: Snapshot) -> str:
+    """One log line describing a re-parse."""
+    files = len(snapshot.entries)
+    warnings = len(snapshot.messages) + sum(len(e.skipped) for e in snapshot.entries)
+    return (
+        f"re-parsed {files} file{'' if files == 1 else 's'} (generation {snapshot.generation}), "
+        f"{warnings} warning{'' if warnings == 1 else 's'}"
+    )
+
+
+def watch(
+    workspace: Workspace,
+    server: ExplorerServer,
+    stop: threading.Event,
+    *,
+    interval: float = 1.0,
+    log: Callable[[str], None] = print,
+) -> None:
+    """Poll for file changes until ``stop`` is set; log and wake the streams on each re-parse."""
+    while not stop.is_set():
+        try:
+            if workspace.refresh():
+                log(summary(workspace.current()))
+                server.notify()
+        except Exception as exc:  # noqa: BLE001 - a failed poll must not end the watcher
+            log(f"error: refresh failed: {exc}")
+        stop.wait(interval)
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -147,9 +182,36 @@ class Handler(BaseHTTPRequestHandler):
             return self.serve_asset("index.html")
         if path.startswith(STATIC_PREFIX):
             return self.serve_asset(path[len(STATIC_PREFIX) :])
-        if path.startswith(API_PREFIX) and path != EVENTS_PATH:
+        if path == EVENTS_PATH:
+            return self.serve_events()
+        if path.startswith(API_PREFIX):
             return self.serve_api(path[len(API_PREFIX) :], query)
         self.respond_text(HTTPStatus.NOT_FOUND)
+
+    def serve_events(self) -> None:
+        """Stream a ``generation`` event per new snapshot, with a ping every 15 s of silence."""
+        self.send_response(HTTPStatus.OK)
+        for name, value in {**SECURITY_HEADERS, "Cache-Control": "no-store"}.items():
+            self.send_header(name, value)
+        self.send_header("Content-Type", "text/event-stream")
+        self.end_headers()
+        self.wfile.flush()
+        server = self.server
+        last: int | None = None
+        while True:
+            with server.events:
+                while not server.stop.is_set() and server.workspace.current().generation == last:
+                    if not server.events.wait(PING_SECONDS):
+                        break  # timed out: send a ping
+                if server.stop.is_set():
+                    return
+                generation = server.workspace.current().generation
+            if generation != last:
+                self.wfile.write(f"event: generation\ndata: {generation}\n\n".encode())
+                last = generation
+            else:
+                self.wfile.write(b": ping\n\n")
+            self.wfile.flush()
 
     def serve_api(self, raw_path: str, query: dict[str, list[str]]) -> None:
         response = api.handle(raw_path, query, self.server.workspace.current())
