@@ -10,7 +10,7 @@ from tree_sitter import Node
 
 from pyflowcharts.cfg.model import CallSite
 from pyflowcharts.frontends.python.discovery import Found
-from pyflowcharts.frontends.python.source import Source
+from pyflowcharts.frontends.python.source import Source, identifier
 from pyflowcharts.ir import CallRef
 
 
@@ -305,7 +305,7 @@ def _parameter_name(param: Node) -> str:
 
 
 def _text(node: Node) -> str:
-    return (node.text or b"").decode()
+    return identifier(node)
 
 
 def _name(node: Node) -> str:

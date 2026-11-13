@@ -6,7 +6,7 @@ from dataclasses import dataclass
 
 from tree_sitter import Node
 
-from pyflowcharts.frontends.python.source import Source
+from pyflowcharts.frontends.python.source import Source, identifier
 from pyflowcharts.ir import Parameter, ParamKind
 
 
@@ -56,7 +56,7 @@ class _Finder:
 
 def _name(node: Node) -> str:
     name = node.child_by_field_name("name")
-    return (name.text or b"").decode() if name is not None else ""
+    return identifier(name) if name is not None else ""
 
 
 def parameters(func: Node, src: Source) -> list[Parameter]:

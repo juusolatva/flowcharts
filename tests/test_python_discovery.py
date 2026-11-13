@@ -60,3 +60,13 @@ def test_parameters_and_returns():
 def test_default_after_a_comment_is_read_from_the_value_field():
     s, (f,) = found("def f(x= # why\n    42, y: int = # why\n    3): pass")
     assert [p.default for p in parameters(f.node, s)] == ["42", "3"]
+
+
+def test_names_are_nfkc_normalized_like_python():
+    # Python normalizes identifiers (NFKC), so these are one name: the second redefines it.
+    composed, decomposed = "caf\u00e9", "cafe\u0301"
+    _, fs = found(
+        f"def {composed}(): pass\ndef {decomposed}(): pass\nclass \ufb01x:\n    def m(): pass\n"
+    )
+    assert [f.qualname for f in fs] == [composed, f"{composed}@L2", "fix.m"]
+    assert fs[1].name == composed

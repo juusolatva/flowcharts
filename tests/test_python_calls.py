@@ -381,3 +381,14 @@ def test_every_parameter_kind_shadows():
     ]
     assert [r.qualname for r in fn(d, "run").calls[4].candidates] == ["e"]  # not a parameter
     assert fn(d, "s").calls[0].candidates == []
+
+
+def test_names_are_nfkc_normalized_like_python():
+    composed, decomposed = "caf\u00e9", "cafe\u0301"
+    src = f"from m{decomposed} import {decomposed}\ndef f():\n    {composed}()\n"
+    assert cands(src, "f", composed) == [
+        (f"m{composed}", composed),
+        (f"m{composed}", f"{composed}.__init__"),
+    ]
+    src = f"def {composed}(): pass\ndef f():\n    {decomposed}()\n"
+    assert cands(src, "f", decomposed) == [("pkg.mod", composed)]
