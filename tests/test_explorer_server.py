@@ -1,7 +1,12 @@
+import shutil
+import threading
+
 import pytest
 from explorer_helpers import header, request
 
-from pyflowcharts.explorer.server import SECURITY_HEADERS
+from pyflowcharts.explorer.server import SECURITY_HEADERS, ExplorerServer, shutdown
+from pyflowcharts.explorer.workspace import Workspace
+from pyflowcharts.ir import ChartOptions
 
 
 def authed(rs):
@@ -180,3 +185,27 @@ def test_api_events_is_not_routed_yet(running_server):
         running_server.port, "GET", "/api/events", headers=authed(running_server)
     )
     assert status == 404
+
+
+@pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
+def test_non_ascii_qualname_reaches_api_percent_encoded(running_server, tmp_path):
+    source = tmp_path / "u.py"
+    source.write_text("def größe():\n    pass\n", encoding="utf-8")
+    stop = threading.Event()
+    workspace = Workspace([source], [], ChartOptions(), stop=stop)
+    server = ExplorerServer(workspace, 0, "tok", stop)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        status, headers, body = request(
+            server.port,
+            "GET",
+            "/api/svg/chart/0/gr%C3%B6%C3%9Fe?g=1",
+            headers={"Cookie": f"{server.cookie_name}=tok"},
+        )
+    finally:
+        shutdown(server, stop)
+        thread.join(timeout=5)
+    assert status == 200
+    assert header(headers, "Content-Type") == "image/svg+xml"
+    assert b"<svg" in body

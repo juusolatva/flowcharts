@@ -59,9 +59,12 @@ def handle(
             return _cached(
                 snapshot, ("callgraph",), lambda: to_callgraph_dot(_docs(snapshot)), render
             )
-    if not re.fullmatch(r"[0-9]+", index) or int(index) >= len(snapshot.documents):
+    # a valid index has at most as many digits as the largest one (and int() has a digit limit)
+    if not re.fullmatch(r"[0-9]+", index) or len(index) > len(str(len(snapshot.documents))):
         return NOT_FOUND
     i = int(index)
+    if i >= len(snapshot.documents):
+        return NOT_FOUND
     match parts:
         case ["document", _]:
             return Response(200, JSON, to_json(snapshot.documents[i]).encode("utf-8"))

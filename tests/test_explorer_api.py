@@ -67,7 +67,7 @@ def test_stale_or_missing_generation_is_409(tmp_path):
 
 def test_bad_indices_are_404(tmp_path):
     s = snap(tmp_path)
-    for index in ("-1", "x", "99", "٢", ""):
+    for index in ("-1", "x", "99", "٢", "", "9" * 5000):
         assert get(s, f"document/{index}").status == 404, index
         assert get(s, f"source/{index}").status == 404, index
         assert get(s, f"svg/chart/{index}/f").status == 404, index
