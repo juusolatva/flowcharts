@@ -4,7 +4,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 ## Project
 
-`flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work, and draws one call graph per run. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
+`flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work, and draws one call graph per run. It outputs JSON, DOT, SVG, PNG and Mermaid, and `pyflowcharts explore` serves the same charts in a local web app that updates as files change. The JSON is the stable, machine-readable format; the explorer's front end reads it.
 
 When behaviour is unclear, the README and the tests describe the intended behaviour. If the code and the documentation disagree, raise it rather than silently picking one.
 
@@ -47,7 +47,16 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - `src/pyflowcharts/pipeline.py`: `parse_all` parses and links the inputs of a run; shared by the CLI and the explorer. It prints nothing.
 - `src/pyflowcharts/cli_options.py`: the chart options, their validators and the exit codes, shared by the CLI and the explorer.
 - `src/pyflowcharts/cli.py`: argument parsing, `--function` selection, warnings and exit codes; `explore` hands over to the explorer.
-- `src/pyflowcharts/explorer/`: `pyflowcharts explore`, a local web app. `main.py` (arguments, startup), `workspace.py` (re-parses when files change, publishes immutable snapshots), `server.py` (127.0.0.1 only: Host check, token cookie, headers, routing, event stream), `api.py` (pure request-to-response logic for `/api/*`), `render.py` (DOT to SVG with `dot`), `assets.py` (the fixed table of static files). `static/lib/` holds pure ES modules (routing, search, call index, source map, SVG ids, drag, generation tracking) that Node tests import; `static/views/` holds the thin DOM glue. No npm, no build step.
+- `src/pyflowcharts/explorer/`: `pyflowcharts explore`, a local web app.
+  - `main.py`: arguments and startup.
+  - `workspace.py`: polled once a second; when the files change (fingerprint of paths, keys and `stat()`, plus an open-probe for files that failed to read) it waits for writes to settle, re-parses the whole run and publishes an immutable, numbered snapshot.
+  - `server.py`: 127.0.0.1 only. Host check, token cookie, security headers, routing, the event stream and the watcher thread.
+  - `api.py`: pure request-to-response logic for `/api/*` (generation checks, SVG cache).
+  - `render.py`: DOT to SVG with `dot`, with a timeout.
+  - `assets.py`: the fixed table of static files.
+  - `static/lib/`: pure ES modules that Node tests import: routing, search, file tree, call index, source map, SVG ids, drag, keys, view state, generation tracking and the API client (`client.mjs`, with `fetch` injected).
+  - `static/views/`: the thin DOM glue.
+  - No npm, no build step.
 
 ## Rules
 
