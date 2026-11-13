@@ -68,13 +68,14 @@ def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
 def _module(
     src: Source, path: str, options: ChartOptions, warnings: list[Diagnostic]
 ) -> Chart | None:
-    """The module chart, or ``None`` (appending a warning when it had to be skipped). The
-    tree-sitter error check comes first: a misread statement could look like work or hide it."""
+    """The module chart, or ``None`` (appending a warning when it had to be skipped). A
+    tree-sitter error only matters when a chart would be drawn; a top-level ``ERROR`` node
+    is not a declaration, so it counts as work and is still reported."""
     root = src.tree.root_node
+    if not does_work(root):
+        return None
     if (line := first_error_line(root)) is not None:
         warnings.append(Diagnostic(path, line, UNSUPPORTED, MODULE_QUALNAME))
-        return None
-    if not does_work(root):
         return None
     try:
         return module_chart(root, src, path, options)
