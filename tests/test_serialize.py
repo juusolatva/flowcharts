@@ -144,3 +144,8 @@ def test_rejects_unknown_schema_version(doc):
 
 def test_non_ascii_preserved(doc):
     assert "é" in to_json(doc)
+
+
+def test_document_positional_fields_keep_their_order():
+    doc = Document("t.py", "python", [], None, 2)
+    assert (doc.module, doc.schema_version, doc.module_name) == (None, 2, "")

@@ -108,7 +108,7 @@ class Document:
     source: str
     language: str
     functions: list[FunctionChart]
-    module_name: str = ""
+    module_name: str = field(default="", kw_only=True)  # keyword-only: positional order unchanged
     module: Chart | None = None
     schema_version: int = SCHEMA_VERSION
 
