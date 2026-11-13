@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import PurePosixPath
 from typing import Protocol
 
 from pyflowcharts.ir import ChartOptions, Document
@@ -53,4 +54,13 @@ class Frontend(Protocol):
     language: str
     extensions: tuple[str, ...]
 
-    def parse(self, source: bytes, path: str, options: ChartOptions) -> ParseResult: ...
+    def parse(
+        self,
+        source: bytes,
+        path: str,
+        options: ChartOptions,
+        key: PurePosixPath | None = None,
+    ) -> ParseResult:
+        """Parse one file. ``key`` is its output key (``pkg/io/load``), from which the module
+        name is derived; ``None`` means the file's stem."""
+        ...

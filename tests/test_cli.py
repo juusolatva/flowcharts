@@ -297,3 +297,9 @@ def test_syntax_error_only_file_has_no_nothing_to_chart(tmp_path, capsys):
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
     err = capsys.readouterr().err
     assert "syntax error outside functions" in err and "nothing to chart" not in err
+
+
+def test_json_has_module_name_from_walk(tmp_path):
+    write(tmp_path / "src/pkg", "mod.py", "def f(): pass\n")
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    assert from_json((tmp_path / "o/pkg/mod.json").read_text()).module_name == "pkg.mod"

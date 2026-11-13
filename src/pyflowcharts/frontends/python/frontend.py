@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+from pathlib import PurePath, PurePosixPath
+
 from pyflowcharts.cfg.builder import StrayLoopTransfer, build_chart
 from pyflowcharts.frontends.base import Diagnostic, ParseResult, SourceError
+from pyflowcharts.frontends.python.calls import module_info
 from pyflowcharts.frontends.python.discovery import Found, find_functions, parameters, returns
 from pyflowcharts.frontends.python.module import STRAY, UNSUPPORTED, does_work, module_chart
 from pyflowcharts.frontends.python.source import Source
@@ -18,7 +21,14 @@ class PythonFrontend:
     language = "python"
     extensions: tuple[str, ...] = (".py",)
 
-    def parse(self, source: bytes, path: str, options: ChartOptions) -> ParseResult:
+    def parse(
+        self,
+        source: bytes,
+        path: str,
+        options: ChartOptions,
+        key: PurePosixPath | None = None,
+    ) -> ParseResult:
+        info = module_info(key if key is not None else PurePosixPath(PurePath(path).stem))
         src = Source.from_bytes(source, path)
         try:
             functions = find_functions(src.tree.root_node)
@@ -41,7 +51,13 @@ class PythonFrontend:
         warnings.sort(key=lambda w: w.line or 0)
         if validation.outside is not None:
             warnings.insert(0, validation.outside)
-        document = Document(source=path, language=self.language, functions=charts, module=module)
+        document = Document(
+            source=path,
+            language=self.language,
+            functions=charts,
+            module_name=info.name,
+            module=module,
+        )
         return ParseResult(document, tuple(warnings))
 
 
