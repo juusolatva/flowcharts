@@ -119,4 +119,4 @@ uv run ruff check      # lint
 uv run ruff format     # format
 ```
 
-The architecture is frontend (tree-sitter, Python only for now) → language-neutral CFG engine → IR → backends (JSON, Graphviz, Mermaid). See `AGENTS.md` for the project rules and `docs/superpowers/specs/` for the design.
+The architecture is frontend (tree-sitter, Python only for now) → language-neutral CFG engine → IR → backends (JSON, Graphviz, Mermaid). See `AGENTS.md` for the architecture and project rules.

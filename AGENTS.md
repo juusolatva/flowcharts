@@ -6,10 +6,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 `flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work, and draws one call graph per run. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
 
-- Design spec: `docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`
-- MVP implementation plan: `docs/superpowers/plans/2026-11-11-python-flowcharts-mvp.md`
-
-When behaviour is unclear, the spec is the source of truth. If the code and the spec disagree, raise it rather than silently picking one.
+When behaviour is unclear, the README and the tests describe the intended behaviour. If the code and the documentation disagree, raise it rather than silently picking one.
 
 ## Commands
 
@@ -58,7 +55,7 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - The IR holds no layout data (no x/y). Layout belongs to Graphviz or the GUI.
 - Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax). The module-level chart uses the qualname `<module>` (`MODULE_QUALNAME`), which no function qualname can equal.
 - Output must be deterministic: the same input gives byte-identical JSON, DOT and Mermaid. No sets, hashes or timestamps in the output order.
-- Any change to the JSON shape requires bumping `SCHEMA_VERSION` in `ir.py`, updating `from_json`, and noting it in the spec.
+- Any change to the JSON shape requires bumping `SCHEMA_VERSION` in `ir.py`, updating `from_json`, and noting it in the README.
 
 **Code style**
 - Python ≥ 3.12, full type hints, and `match` statements for AST dispatch.
