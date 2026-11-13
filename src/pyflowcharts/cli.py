@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import sys
 from collections.abc import Sequence
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pyflowcharts import __version__
 from pyflowcharts.frontends import SourceError, frontend_for_path
@@ -66,7 +66,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     writer = Writer(args.output, formats)
     for path, doc in documents:
-        writer.write(doc, path.stem)
+        writer.write(doc, PurePosixPath(path.stem))
 
     if writer.write_failed:
         status = EXIT_ERROR
