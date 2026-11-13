@@ -280,16 +280,10 @@ def _always_runs(stmt: Node) -> bool:
     """Whether ``stmt`` always runs once its module's or function's body does: it sits in that
     body directly or through ``with`` bodies and ``finally`` blocks only."""
     child, node = stmt, stmt.parent
-    while node is not None:
-        match node.type:
-            case "module" | "function_definition":
-                return True
-            case "block" | "with_statement" | "finally_clause":
-                pass
-            case "try_statement" if child.type == "finally_clause":
-                pass
-            case _:
-                return False
+    while node is not None and node.type not in ("module", "function_definition"):
+        through_finally = node.type == "try_statement" and child.type == "finally_clause"
+        if node.type not in ("block", "with_statement", "finally_clause") and not through_finally:
+            return False
         child, node = node, node.parent
     return True
 
