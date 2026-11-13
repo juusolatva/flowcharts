@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import json
-import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from urllib.parse import unquote
@@ -78,10 +77,12 @@ def handle(
 def _document_index(text: str, snapshot: Snapshot) -> int | None:
     """The document index named by ``text``, or ``None``.
 
-    Only ASCII digits count: ``\\d`` would also match other scripts' digits. A valid index
-    has at most as many digits as the document count (and ``int()`` has a digit limit).
+    Only ASCII digits count (``str.isdecimal`` alone, like ``\\d``, also accepts other
+    scripts' digits). A valid index has at most as many digits as the document count (and
+    ``int()`` has a digit limit).
     """
-    if not re.fullmatch(r"[0-9]+", text) or len(text) > len(str(len(snapshot.documents))):
+    valid = text.isascii() and text.isdecimal()
+    if not valid or len(text) > len(str(len(snapshot.documents))):
         return None
     i = int(text)
     return i if i < len(snapshot.documents) else None
