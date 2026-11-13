@@ -278,11 +278,12 @@ def _package_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef
 
 def _always_runs(stmt: Node) -> bool:
     """Whether ``stmt`` always runs once its module's or function's body does: it sits in that
-    body directly or through ``with`` bodies and ``finally`` blocks only."""
+    body directly or through ``finally`` blocks only. A ``with`` body does not count: its
+    context manager can swallow the exception (``with suppress(ImportError):``)."""
     child, node = stmt, stmt.parent
     while node is not None and node.type not in ("module", "function_definition"):
         through_finally = node.type == "try_statement" and child.type == "finally_clause"
-        if node.type not in ("block", "with_statement", "finally_clause") and not through_finally:
+        if node.type not in ("block", "finally_clause") and not through_finally:
             return False
         child, node = node, node.parent
     return True
