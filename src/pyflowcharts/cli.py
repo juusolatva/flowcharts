@@ -6,7 +6,7 @@ import argparse
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pyflowcharts import __version__
 from pyflowcharts.frontends import SourceError, frontend_for_path
@@ -47,7 +47,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     results: list[tuple[Input, ParseResult]] = []
     for item in expansion.inputs:
         try:
-            results.append((item, _parse_file(item.path, options)))
+            results.append((item, _parse_file(item.path, options, item.key)))
         except SourceError as err:
             print(err, file=sys.stderr)
             status = EXIT_ERROR
@@ -199,7 +199,7 @@ def _select(
     return selected
 
 
-def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
+def _parse_file(path: Path, options: ChartOptions, key: PurePosixPath) -> ParseResult:
     frontend = frontend_for_path(path)
     try:
         source = path.read_bytes()
@@ -207,4 +207,4 @@ def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
         raise SourceError(str(path), "no such file") from None
     except OSError as err:
         raise SourceError(str(path), err.strerror or str(err)) from None
-    return frontend.parse(source, str(path), options)
+    return frontend.parse(source, str(path), options, key)
