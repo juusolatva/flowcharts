@@ -229,7 +229,7 @@ def _select(
             module=doc.module if MODULE_QUALNAME in wanted else None,
         )
         warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
-        selected.append((item, ParseResult(document, warnings)))
+        selected.append((item, replace(result, document=document, warnings=warnings)))
     return selected
 
 

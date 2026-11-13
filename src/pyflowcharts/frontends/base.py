@@ -48,6 +48,7 @@ class Diagnostic:
 class ParseResult:
     document: Document
     warnings: tuple[Diagnostic, ...]
+    source_text: str = ""
 
 
 class Frontend(Protocol):

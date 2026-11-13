@@ -67,3 +67,15 @@ def test_too_deeply_nested_is_a_source_error():
     deep = "+".join(["1"] * 20000)
     with pytest.raises(SourceError, match="too deeply nested"):
         parse(f"def f():\n    x = {deep}\n")
+
+
+def test_parse_result_carries_decoded_source_text():
+    raw = b"\xef\xbb\xbfdef f():\r\n    return 1\r\n"
+    r = PythonFrontend().parse(raw, "m.py", ChartOptions())
+    assert r.source_text == "def f():\n    return 1\n"
+
+
+def test_parse_result_source_text_honours_coding_cookie():
+    raw = "# -*- coding: latin-1 -*-\ndef f():\n    return 'é'\n".encode("latin-1")
+    r = PythonFrontend().parse(raw, "m.py", ChartOptions())
+    assert "return 'é'" in r.source_text

@@ -59,7 +59,7 @@ class PythonFrontend:
             module_name=info.name,
             module=module,
         )
-        return ParseResult(document, tuple(warnings))
+        return ParseResult(document, tuple(warnings), src.text)
 
 
 def _chart(func: Found, src: Source, options: ChartOptions, resolver: Resolver) -> FunctionChart:
