@@ -6,10 +6,10 @@ and it is exactly what the JSON output contains. It deliberately holds no layout
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from enum import StrEnum
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 MODULE_QUALNAME = "<module>"  # qualname of a file's module-level chart
 
@@ -65,6 +65,25 @@ class Parameter:
     kind: ParamKind
 
 
+@dataclass(frozen=True)
+class CallRef:
+    """A chart that a call may reach: its dotted module name and qualname in that module."""
+
+    module: str
+    qualname: str
+
+
+@dataclass(frozen=True)
+class Call:
+    """A call written in a chart node. ``candidates`` lists where it may go, most likely
+    first; ``target`` is the first candidate charted in the run, set by the linker."""
+
+    node: str
+    text: str
+    candidates: list[CallRef]
+    target: CallRef | None
+
+
 @dataclass
 class Chart:
     """One flowchart: a function's or, with qualname ``MODULE_QUALNAME``, a module's."""
@@ -73,6 +92,7 @@ class Chart:
     location: SourceLocation
     nodes: list[Node]
     edges: list[Edge]
+    calls: list[Call] = field(default_factory=list, kw_only=True)
 
 
 @dataclass
@@ -88,6 +108,7 @@ class Document:
     source: str
     language: str
     functions: list[FunctionChart]
+    module_name: str = ""
     module: Chart | None = None
     schema_version: int = SCHEMA_VERSION
 

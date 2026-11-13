@@ -264,7 +264,7 @@ def test_function_selects_module(tmp_path):
     src = write(tmp_path, "s.py", "def f(): pass\nmain()\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "<module>"]) == 0
     doc = from_json((tmp_path / "o/s.json").read_text())
-    assert doc.functions == [] and doc.module is not None and doc.schema_version == 2
+    assert doc.functions == [] and doc.module is not None and doc.schema_version == 3
     assert main([str(src), "-o", str(tmp_path / "o2"), "-f", "json", "--function", "f"]) == 0
     assert from_json((tmp_path / "o2/s.json").read_text()).module is None
 
