@@ -67,14 +67,22 @@ def main(
     if shutil.which("dot") is None:
         print(GRAPHVIZ_NOT_FOUND, file=sys.stderr)
         return EXIT_NO_GRAPHVIZ
-    expansion = expand(args.paths, args.exclude)
+    try:
+        expansion = expand(args.paths, args.exclude)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     collision = collision_error(expansion.inputs, hint=EXPLORE_HINT, allow_prefixes=True)
     if collision is not None:
         print(collision, file=sys.stderr)
         return EXIT_ERROR
 
     stop = threading.Event()
-    workspace = Workspace(args.paths, args.exclude, chart_options(args), stop=stop)
+    try:
+        workspace = Workspace(args.paths, args.exclude, chart_options(args), stop=stop)
+    except OSError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return EXIT_ERROR
     for message in workspace.startup_messages():
         print(message, file=sys.stderr)
     if workspace.startup_failed():

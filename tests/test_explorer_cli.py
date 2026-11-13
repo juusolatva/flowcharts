@@ -171,3 +171,23 @@ def test_serving_path_stops_on_interrupt(tmp_path, monkeypatch):
     watchers[0].join(timeout=5)
     assert not watchers[0].is_alive()
     assert set(threading.enumerate()) <= before
+
+
+@needs_dot
+def test_expand_oserror_exits_1(tmp_path, monkeypatch, capsys):
+    def denied(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(explorer_main, "expand", denied)
+    assert run([str(write(tmp_path, "m.py"))]) == 1
+    assert capsys.readouterr().err == "error: denied\n"
+
+
+@needs_dot
+def test_first_parse_oserror_exits_1(tmp_path, monkeypatch, capsys):
+    def denied(*args, **kwargs):
+        raise PermissionError("denied")
+
+    monkeypatch.setattr(explorer_main, "Workspace", denied)
+    assert run([str(write(tmp_path, "m.py"))]) == 1
+    assert capsys.readouterr().err == "error: denied\n"
