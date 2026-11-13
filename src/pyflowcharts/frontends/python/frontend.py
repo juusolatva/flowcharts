@@ -46,7 +46,7 @@ class PythonFrontend:
 
 
 def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
-    nodes, edges = build_chart(
+    nodes, edges, calls = build_chart(
         func.qualname,
         signature_label(func.node, src, options),
         src.location(func.node),
@@ -62,6 +62,7 @@ def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
         location=src.location(func.node),
         nodes=nodes,
         edges=edges,
+        calls=calls,
     )
 
 

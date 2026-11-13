@@ -84,7 +84,9 @@ def emit_try(builder: ChartBuilder, stmt: Try, frontier: Frontier) -> Frontier:
         with builder.exception_scope(after_scope):
             normal = builder.block(stmt.orelse, normal)
             for handler in stmt.handlers:
-                handler_id = builder.add_node(handler.loc, NodeKind.PROCESS, handler.label)
+                handler_id = builder.add_node(
+                    handler.loc, NodeKind.PROCESS, handler.label, calls=handler.calls
+                )
                 normal += builder.block(handler.body, [(handler_id, None)])
     finally:
         if has_finally:

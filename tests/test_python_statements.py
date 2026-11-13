@@ -15,7 +15,7 @@ def chart(text: str, **opts) -> FunctionChart:
     options = ChartOptions(**opts)
     loc = src.location(func)
     body = convert_body(func, src, options)
-    nodes, edges = build_chart("f", signature_label(func, src, options), loc, body, options)
+    nodes, edges, calls = build_chart("f", signature_label(func, src, options), loc, body, options)
     return FunctionChart(
         qualname="f",
         name="f",
@@ -25,6 +25,7 @@ def chart(text: str, **opts) -> FunctionChart:
         location=loc,
         nodes=nodes,
         edges=edges,
+        calls=calls,
     )
 
 
