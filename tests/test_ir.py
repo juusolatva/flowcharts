@@ -21,3 +21,4 @@ def test_enum_values_are_strings():
 
 def test_default_options():
     assert ChartOptions() == ChartOptions(False, True, True, 60)
+    assert ChartOptions().show_module is True

@@ -161,7 +161,7 @@ def test_document_metadata():
         "empty.py",
         "python",
         [],
-        1,
+        2,
     )
 
 

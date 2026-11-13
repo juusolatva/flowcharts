@@ -7,7 +7,7 @@ import json
 from typing import Any
 
 from pyflowcharts.ir import (
-    SCHEMA_VERSION,
+    Chart,
     Document,
     Edge,
     FunctionChart,
@@ -17,6 +17,8 @@ from pyflowcharts.ir import (
     ParamKind,
     SourceLocation,
 )
+
+SUPPORTED_VERSIONS = (1, 2)
 
 
 class UnsupportedSchemaVersionError(ValueError):
@@ -30,14 +32,16 @@ def to_json(doc: Document) -> str:
 def from_json(text: str) -> Document:
     data = json.loads(text)
     version = data.get("schema_version")
-    if version != SCHEMA_VERSION:
+    if version not in SUPPORTED_VERSIONS:
         raise UnsupportedSchemaVersionError(
-            f"unsupported schema_version {version!r} (expected {SCHEMA_VERSION})"
+            f"unsupported schema_version {version!r} (expected 1 or 2)"
         )
+    module = data.get("module")  # absent in version 1
     return Document(
         source=data["source"],
         language=data["language"],
-        functions=[_chart(c) for c in data["functions"]],
+        functions=[_function_chart(c) for c in data["functions"]],
+        module=None if module is None else _module_chart(module),
         schema_version=version,
     )
 
@@ -46,10 +50,21 @@ def _location(data: dict[str, Any] | None) -> SourceLocation | None:
     return None if data is None else SourceLocation(**data)
 
 
-def _chart(data: dict[str, Any]) -> FunctionChart:
-    location = SourceLocation(**data["location"])
+def _module_chart(data: dict[str, Any]) -> Chart:
+    return Chart(
+        qualname=data["qualname"],
+        location=SourceLocation(**data["location"]),
+        nodes=_nodes(data),
+        edges=_edges(data),
+    )
+
+
+def _function_chart(data: dict[str, Any]) -> FunctionChart:
     return FunctionChart(
         qualname=data["qualname"],
+        location=SourceLocation(**data["location"]),
+        nodes=_nodes(data),
+        edges=_edges(data),
         name=data["name"],
         is_async=data["is_async"],
         parameters=[
@@ -57,10 +72,15 @@ def _chart(data: dict[str, Any]) -> FunctionChart:
             for p in data["parameters"]
         ],
         returns=data["returns"],
-        location=location,
-        nodes=[
-            Node(n["id"], NodeKind(n["kind"]), n["label"], _location(n["location"]))
-            for n in data["nodes"]
-        ],
-        edges=[Edge(e["source"], e["target"], e["label"]) for e in data["edges"]],
     )
+
+
+def _nodes(data: dict[str, Any]) -> list[Node]:
+    return [
+        Node(n["id"], NodeKind(n["kind"]), n["label"], _location(n["location"]))
+        for n in data["nodes"]
+    ]
+
+
+def _edges(data: dict[str, Any]) -> list[Edge]:
+    return [Edge(e["source"], e["target"], e["label"]) for e in data["edges"]]
