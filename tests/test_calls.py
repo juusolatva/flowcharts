@@ -1,7 +1,7 @@
 from dataclasses import replace
 from pathlib import PurePosixPath
 
-from pyflowcharts.calls import link
+from pyflowcharts.calls import link, resolved_edges
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import Call, CallRef, ChartOptions
 
@@ -69,3 +69,30 @@ def test_input_is_not_mutated():
     a = parse("def f():\n    f()\n", "a")
     link([a])
     assert a.functions[0].calls[0].target is None
+
+
+def test_resolved_edges_between_documents():
+    a = parse("from b import g\ndef f():\n    g()\n", "a")
+    b = parse("def g(): pass\n", "b")
+    assert resolved_edges(link([a, b])) == [((0, "f"), (1, "g"))]
+
+
+def test_resolved_edges_are_sorted_and_deduplicated():
+    src = "def h():\n    g()\n    g()\ndef g():\n    pass\ndef f():\n    h()\n    g()\n"
+    assert resolved_edges(link([parse(src, "m")])) == [
+        ((0, "f"), (0, "g")),
+        ((0, "f"), (0, "h")),
+        ((0, "h"), (0, "g")),
+    ]
+
+
+def test_resolved_edges_skip_shared_module_names():
+    a = parse("from x import g\ndef f():\n    g()\n", "a")
+    x1 = parse("def g(): pass\n", "x")
+    x2 = parse("def g(): pass\n", "x")
+    assert resolved_edges(link([a, x1, x2])) == []
+
+
+def test_resolved_edges_include_module_chart_callers():
+    src = "def main(): pass\nif __name__ == '__main__':\n    main()\n"
+    assert resolved_edges(link([parse(src, "app")])) == [((0, "<module>"), (0, "main"))]

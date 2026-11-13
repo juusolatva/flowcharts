@@ -37,3 +37,26 @@ def _linked[C: Chart](chart: C, index: set[CallRef]) -> C:
 def _target(call: Call, index: set[CallRef]) -> Call:
     target = next((ref for ref in call.candidates if ref in index), None)
     return replace(call, target=target)
+
+
+def resolved_edges(documents: list[Document]) -> list[tuple[tuple[int, str], tuple[int, str]]]:
+    """Sorted, deduplicated ``(document index, chart qualname)`` caller → callee pairs for the
+    calls whose target is a function chart. Documents with no module name, or one shared by
+    several documents, are not indexed (the linker's rule). Module charts can be callers."""
+    names = Counter(doc.module_name for doc in documents)
+    drawn = {
+        (doc.module_name, chart.qualname): (i, chart.qualname)
+        for i, doc in enumerate(documents)
+        if doc.module_name and names[doc.module_name] == 1
+        for chart in doc.functions
+    }
+    edges: set[tuple[tuple[int, str], tuple[int, str]]] = set()
+    for i, doc in enumerate(documents):
+        for chart in [*doc.functions, *([doc.module] if doc.module is not None else [])]:
+            targets = (
+                drawn.get((call.target.module, call.target.qualname))
+                for call in chart.calls
+                if call.target is not None
+            )
+            edges.update(((i, chart.qualname), t) for t in targets if t is not None)
+    return sorted(edges)
