@@ -1,10 +1,10 @@
 import { buildCallIndex, distinctTargets, resolveTarget } from "../lib/callindex.mjs";
+import { createApi, isIgnorable } from "../lib/client.mjs";
 import { opensSearch } from "../lib/keys.mjs";
 import { formatHash, parseHash } from "../lib/routing.mjs";
 import { fallbackFunction, nodeForLine } from "../lib/sourcemap.mjs";
 import { splitCallgraphId } from "../lib/svgids.mjs";
 import { chartState } from "../lib/viewstate.mjs";
-import { createApi, isIgnorable } from "./api.mjs";
 import { mountSvg, showNotice } from "./chart.mjs";
 import { link } from "./dom.mjs";
 import { startLive } from "./live.mjs";

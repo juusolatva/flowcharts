@@ -1,4 +1,4 @@
-import { createTracker, isStale } from "../lib/generation.mjs";
+import { createTracker, isStale } from "./generation.mjs";
 
 export class StaleError extends Error {}
 
@@ -6,7 +6,8 @@ export const isIgnorable = (error) => error?.name === "AbortError" || error inst
 
 // Every data request carries ?g=<generation>. Accepting a newer generation aborts the requests
 // of the older one; a 409 or a newer generation event triggers a single shared refetch.
-export function createApi({ onState, onBusy, onError, onOk }) {
+// `fetch` is injectable for tests.
+export function createApi({ onState, onBusy, onError, onOk, fetch = globalThis.fetch }) {
   const tracker = createTracker();
   let controller = new AbortController();
   let inflight = null;
