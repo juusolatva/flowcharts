@@ -16,7 +16,16 @@ def chart(text: str, **opts) -> FunctionChart:
     loc = src.location(func)
     body = convert_body(func, src, options)
     nodes, edges = build_chart("f", signature_label(func, src, options), loc, body, options)
-    return FunctionChart("f", "f", False, [], None, loc, nodes, edges)
+    return FunctionChart(
+        qualname="f",
+        name="f",
+        is_async=False,
+        parameters=[],
+        returns=None,
+        location=loc,
+        nodes=nodes,
+        edges=edges,
+    )
 
 
 def _walk(node):

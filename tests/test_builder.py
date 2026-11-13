@@ -25,7 +25,16 @@ def at(line: int, col: int = 4) -> SourceLocation:
 
 def chart(body: Block, **opts) -> FunctionChart:
     nodes, edges = build_chart("f", "def f()", LOC, body, ChartOptions(**opts))
-    return FunctionChart("f", "f", False, [], None, LOC, nodes, edges)
+    return FunctionChart(
+        qualname="f",
+        name="f",
+        is_async=False,
+        parameters=[],
+        returns=None,
+        location=LOC,
+        nodes=nodes,
+        edges=edges,
+    )
 
 
 def test_sequence_and_terminal():

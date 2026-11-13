@@ -9,7 +9,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 from enum import StrEnum
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
+
+MODULE_QUALNAME = "<module>"  # qualname of a file's module-level chart
 
 EXCEPTION_LABEL = "exception"  # edge label of every exception path; backends draw it dashed
 
@@ -64,15 +66,21 @@ class Parameter:
 
 
 @dataclass
-class FunctionChart:
+class Chart:
+    """One flowchart: a function's or, with qualname ``MODULE_QUALNAME``, a module's."""
+
     qualname: str
+    location: SourceLocation
+    nodes: list[Node]
+    edges: list[Edge]
+
+
+@dataclass
+class FunctionChart(Chart):
     name: str
     is_async: bool
     parameters: list[Parameter]
     returns: str | None
-    location: SourceLocation
-    nodes: list[Node]
-    edges: list[Edge]
 
 
 @dataclass
@@ -80,14 +88,17 @@ class Document:
     source: str
     language: str
     functions: list[FunctionChart]
+    module: Chart | None = None
     schema_version: int = SCHEMA_VERSION
 
 
 @dataclass(frozen=True)
 class ChartOptions:
-    """Display options. They affect labels (and which assignment nodes exist), never the data."""
+    """Display options. They affect labels, which assignment nodes exist and whether a module
+    chart is built, never the data inside a chart."""
 
     show_variables: bool = False
     show_parameters: bool = True
     show_returns: bool = True
     max_label_length: int = 60
+    show_module: bool = True
