@@ -82,6 +82,15 @@ type _Binding = _Name | _Module
 
 
 @dataclass
+class _Class:
+    """A class body: its qualname and its methods (name → qualname, first wins), so that
+    ``self.m`` in a redefined class names that class's ``m`` (``C.m@L{line}``)."""
+
+    qualname: str
+    methods: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass
 class _Scope:
     """A module's or function's bindings: definitions (name → kind and qualname, first
     wins), imports (name → bindings in source order) and parameters (bound to nothing we
@@ -98,7 +107,14 @@ class _Scope:
         self.definitions.setdefault(name, (kind, qualname))
 
     def bind(self, name: str, binding: _Binding) -> None:
-        self.imports.setdefault(name, []).append(binding)
+        bindings = self.imports.setdefault(name, [])
+        if isinstance(binding, _Module):
+            # ``import a.b`` and ``import a.c`` bind one module ``a`` reaching both.
+            for i, old in enumerate(bindings):
+                if isinstance(old, _Module) and old.base == binding.base:
+                    bindings[i] = _Module(old.base, old.reachable | binding.reachable)
+                    return
+        bindings.append(binding)
 
 
 class Resolver:
@@ -110,7 +126,7 @@ class Resolver:
         self._found = {f.node.id: f for f in functions}
         self._module = _Scope()
         self._scopes: dict[int, _Scope] = {}  # by function node id
-        self._classes: dict[int, str] = {}  # function node id → directly enclosing class
+        self._classes: dict[int, _Class] = {}  # function node id → directly enclosing class
         self._index(root, "", self._module, None)
 
     def sites(self, roots: Sequence[Node], scope: Found | None) -> tuple[CallSite, ...]:
@@ -127,7 +143,7 @@ class Resolver:
 
     # -- tables ---------------------------------------------------------------
 
-    def _index(self, node: Node, prefix: str, scope: _Scope, cls: str | None) -> None:
+    def _index(self, node: Node, prefix: str, scope: _Scope, cls: _Class | None) -> None:
         for child in node.children:
             match child.type:
                 case "function_definition":
@@ -137,13 +153,14 @@ class Resolver:
                     scope.define(name, "def", qualname)
                     if cls is not None:
                         self._classes[child.id] = cls
+                        cls.methods.setdefault(name, qualname)
                     inner = self._scopes[child.id] = _Scope(parameters=_parameters(child))
                     self._index(child, qualname + ".", inner, None)
                 case "class_definition":
                     qualname = prefix + _name(child)
                     scope.define(_name(child), "class", qualname)
                     # A class body binds nothing visible to the functions inside it.
-                    self._index(child, qualname + ".", _Scope(), qualname)
+                    self._index(child, qualname + ".", _Scope(), _Class(qualname))
                 case "import_statement":
                     self._import(child, scope)
                 case "import_from_statement":
@@ -212,7 +229,7 @@ class Resolver:
         first, rest = parts[0], parts[1:]
         cls = self._classes.get(scope.node.id) if scope is not None else None
         if first in ("self", "cls") and len(parts) == 2 and cls is not None:
-            return self._own(f"{cls}.{rest[0]}")
+            return self._own(cls.methods.get(rest[0], f"{cls.qualname}.{rest[0]}"))
         table = self._lookup(first, scope)
         if table is None:
             return []

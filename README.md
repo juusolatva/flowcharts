@@ -53,6 +53,7 @@ uv run pyflowcharts src/ --no-module                     # functions only
 | `--function QUALNAME ...` | Only chart these functions (`<module>` selects module-level charts); repeatable |
 | `--exclude GLOB ...` | When walking a directory, skip matching files and directories: a pattern without `/` matches names at any depth, one with `/` matches the path relative to the directory, and a trailing `/` matches directories only; repeatable |
 | `--max-label N` | Truncate node labels to N characters (default 60) |
+| `--version` | Print the version and exit |
 
 Put the input paths **before** options that take several values (`-f`, `--function`, `--exclude`).
 
@@ -75,7 +76,7 @@ OUTDIR/
     └── Inventory.size@L25.svg # later duplicates (e.g. property setters) get @L<line>
 ```
 
-Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`).
+Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`). Functions in one file whose names differ only in case (`Foo` and `foo`) give a warning, because their files overwrite each other on case-insensitive file systems such as the macOS and Windows defaults; the exit code is not affected.
 
 Methods are named `Class.method` and nested functions `outer.inner`.
 

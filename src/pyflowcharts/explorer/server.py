@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import hmac
 import sys
 import threading
@@ -104,10 +105,8 @@ class Handler(BaseHTTPRequestHandler):
         """Stay silent: per-request logging would flood the terminal."""
 
     def handle(self) -> None:
-        try:
+        with contextlib.suppress(*DISCONNECTS):
             super().handle()
-        except DISCONNECTS:
-            pass
 
     def __getattr__(self, name: str) -> Any:
         if name.startswith("do_"):

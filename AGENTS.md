@@ -95,3 +95,15 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Class bodies are charted only through their methods.
 - Call resolution is static and best-effort: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled.
+
+## Potential future fixes
+
+Found in a code review and not yet done. Each is small; pick one up as its own change.
+
+- **Module size.** `frontends/python/statements.py` (~385 lines) and `frontends/python/calls.py` (~315) are past the ~300-line guideline. Candidates: move the match-pattern helpers (`_irrefutable`, `_capture`) and the docstring/type-alias helpers out of `statements.py`; move the import tables (`_Scope`, `_Module`, `_Name`, `_Class`, `_through`) out of `calls.py`.
+- **`if`/`elif` duplication.** `_if` and `_if_chain` in `statements.py` build the same branch shape twice, and `stmt()` matches `"elif_clause"`, which never reaches it (an `elif_clause` only appears inside an `if_statement`, never in a block).
+- **Unguarded `next()`.** The `with_statement` and `finally_clause` cases in `statements.py` call `next(...)` without a default. If tree-sitter error recovery in module code ever yields a `with` without a `with_clause` or a `finally` without a block, this raises `StopIteration`. Start with a test that tries to reproduce it.
+- **Case-only clashes between files.** `inputs.collision_error` compares output keys exactly, so `A.py` and `a.py` in one directory are not reported, though their outputs overwrite each other on case-insensitive file systems. (Function names in one file already give a warning, from `output.py`.)
+- **Explorer pan/zoom on live reload.** A re-parse redraws the open chart with a fresh `viewBox`, so the user's pan and zoom are lost on every save. Keep the view when the redrawn chart is the one already open, with the "same chart?" decision in `static/lib/` and a Node test.
+- **Type checking in CI.** `[tool.pyright]` is configured in `pyproject.toml`, but no CI job runs it.
+- **Trivial wrapper.** `explorer/api.py` `_docs(snapshot)` only returns `list(snapshot.documents)`.

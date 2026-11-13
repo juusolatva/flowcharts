@@ -353,7 +353,7 @@ def _between(node: Node, after: str, until: tuple[str, ...]) -> list[Node]:
 
 
 def _irrefutable(case: Node) -> bool:
-    """A bare capture name, ``_``, or one of those in parentheses, with no guard."""
+    """An irrefutable pattern (see ``_capture``) with no guard."""
     if case.child_by_field_name("guard") is not None:
         return False
     patterns = [c for c in case.named_children if c.type == "case_pattern"]
@@ -363,16 +363,25 @@ def _irrefutable(case: Node) -> bool:
 
 
 def _capture(pattern: Node) -> bool:
-    if pattern.child_count != 1:
-        return False
-    inner = pattern.children[0]
-    match inner.type:
+    """Whether ``pattern`` (a ``case_pattern`` or an alternative of an or-pattern) always
+    matches: ``_``, a capture name, one in parentheses, ``P as name`` with ``P`` irrefutable,
+    or an or-pattern with an irrefutable alternative."""
+    if pattern.type == "case_pattern":
+        if pattern.child_count != 1:
+            return False
+        pattern = pattern.children[0]
+    match pattern.type:
         case "_":
             return True
         case "dotted_name":
-            return inner.named_child_count == 1
+            return pattern.named_child_count == 1
         case "tuple_pattern":
-            inner_patterns = [c for c in inner.named_children if c.type == "case_pattern"]
-            has_comma = any(c.type == "," for c in inner.children)
-            return len(inner_patterns) == 1 and not has_comma and _capture(inner_patterns[0])
+            inner = [c for c in pattern.named_children if c.type == "case_pattern"]
+            has_comma = any(c.type == "," for c in pattern.children)
+            return len(inner) == 1 and not has_comma and _capture(inner[0])
+        case "as_pattern":
+            inner = next((c for c in pattern.named_children if c.type == "case_pattern"), None)
+            return inner is not None and _capture(inner)
+        case "union_pattern":
+            return any(_capture(c) for c in pattern.children if c.type != "|")
     return False

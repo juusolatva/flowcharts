@@ -228,6 +228,13 @@ def f():
             [("pkg.mod", "outer.C.o")],
         ),
         ("class C:\n    def m(self):\n        self.x.o()\n", "C.m", "self.x.o", []),
+        # a redefined class: self.m is the method of the class the call is in
+        (
+            "class C:\n    def m(self): pass\nclass C:\n    def m(self): pass\n    def n(self):\n        self.m()\n",
+            "C.n",
+            "self.m",
+            [("pkg.mod", "C.m@L4")],
+        ),
         # Class.method: local, enclosing-function, imported
         ("class C:\n    def s(): pass\ndef f():\n    C.s()\n", "f", "C.s", [("pkg.mod", "C.s")]),
         (
@@ -240,6 +247,11 @@ def f():
         # module imports
         ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
         ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),
+        # submodule imports under one name merge: the longest module prefix wins
+        ("import a.b\nimport a.c\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
+        ("import a.c\nimport a.b\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
+        ("import a.b\nimport a.c\ndef f():\n    a.g()\n", "f", "a.g", [("a", "g")]),
+        ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", []),
         ("import x.y as z\ndef f():\n    z.C.m()\n", "f", "z.C.m", [("x.y", "C.m")]),
         ("import x.y as z\ndef f():\n    x.g()\n", "f", "x.g", []),
         ("from p import x as a\ndef f():\n    a.g()\n", "f", "a.g", [("p.x", "g"), ("p", "x.g")]),
