@@ -133,11 +133,10 @@ class Writer:
 
 
 def _warn_case_clashes(doc: Document) -> None:
-    """Warn about function charts whose file names differ only in case. Uses ``lower()``, not
-    ``casefold()``: file systems map case per character, so ``ß`` and ``ss`` stay distinct."""
+    """Warn about function charts whose file names differ only in case."""
     groups: dict[str, list[str]] = {}
     for chart in doc.functions:
-        groups.setdefault(chart.qualname.lower(), []).append(chart.qualname)
+        groups.setdefault(_case_key(chart.qualname), []).append(chart.qualname)
     for names in groups.values():
         if len(names) > 1:
             quoted = [f"'{name}'" for name in names]
@@ -147,3 +146,10 @@ def _warn_case_clashes(doc: Document) -> None:
                 "overwrite each other on case-insensitive file systems",
                 file=sys.stderr,
             )
+
+
+def _case_key(name: str) -> str:
+    """``name`` as a case-insensitive file system compares it: each character upper-cased on
+    its own (``σ`` and ``ς`` both become ``Σ``), and kept when that would give several (``ß``
+    stays ``ß``, so it does not match ``ss``)."""
+    return "".join(upper if len(upper := char.upper()) == 1 else char for char in name)

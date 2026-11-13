@@ -101,3 +101,10 @@ def test_full_case_folding_is_not_a_clash(tmp_path, capsys):
     doc = parse("def ß(): pass\ndef ss(): pass\n")
     Writer(tmp_path, ["dot"]).write(doc, PurePosixPath("t"))
     assert capsys.readouterr().err == ""
+
+
+def test_final_sigma_clashes_with_sigma(tmp_path, capsys):
+    # Both upper-case to "Σ" under the per-character mapping file systems use.
+    doc = parse("def σ(): pass\ndef ς(): pass\n")
+    Writer(tmp_path, ["dot"]).write(doc, PurePosixPath("t"))
+    assert "functions 'σ' and 'ς' differ only in case" in capsys.readouterr().err
