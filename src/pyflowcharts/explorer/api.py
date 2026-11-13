@@ -12,7 +12,7 @@ from pyflowcharts.backends.callgraph import to_callgraph_dot
 from pyflowcharts.backends.dot import to_dot
 from pyflowcharts.explorer.render import RenderError, svg
 from pyflowcharts.explorer.workspace import Snapshot, snapshot_json
-from pyflowcharts.ir import MODULE_QUALNAME, Chart
+from pyflowcharts.ir import MODULE_QUALNAME, Chart, Document
 from pyflowcharts.serialize import to_json
 
 TEXT = "text/plain; charset=utf-8"
@@ -42,46 +42,52 @@ def handle(
     render: Callable[[str], bytes] = svg,
 ) -> Response:
     """Answer one API request. ``raw_path`` is the still percent-encoded path after ``/api/``."""
-    parts = raw_path.split("/")
-    match parts:
+    match raw_path.split("/"):
         case ["state"]:
             return Response(200, JSON, json.dumps(snapshot_json(snapshot)).encode("utf-8"))
-        case ["document", index] | ["source", index] | ["svg", "chart", index, _]:
-            pass
         case ["svg", "callgraph"]:
-            index = ""
+            kind, index, segment = "callgraph", "", ""
+        case ["document" | "source" as kind, index]:
+            segment = ""
+        case ["svg", "chart", index, segment]:
+            kind = "chart"
         case _:
             return NOT_FOUND
     if query.get("g") != [str(snapshot.generation)]:
         return CONFLICT
-    match parts:
-        case ["svg", "callgraph"]:
-            return _cached(
-                snapshot, ("callgraph",), lambda: to_callgraph_dot(_docs(snapshot)), render
-            )
-    # a valid index has at most as many digits as the largest one (and int() has a digit limit)
-    if not re.fullmatch(r"[0-9]+", index) or len(index) > len(str(len(snapshot.documents))):
+    if kind == "callgraph":
+        return _cached(snapshot, ("callgraph",), lambda: to_callgraph_dot(_docs(snapshot)), render)
+    i = _document_index(index, snapshot)
+    if i is None:
         return NOT_FOUND
-    i = int(index)
-    if i >= len(snapshot.documents):
-        return NOT_FOUND
-    match parts:
-        case ["document", _]:
+    match kind:
+        case "document":
             return Response(200, JSON, to_json(snapshot.documents[i]).encode("utf-8"))
-        case ["source", _]:
+        case "source":
             return Response(200, TEXT, snapshot.results[i].source_text.encode("utf-8"))
-        case _:
-            try:
-                qualname = unquote(parts[3], errors="strict")
-            except UnicodeDecodeError:
-                return NOT_FOUND
-            chart = _find_chart(snapshot, i, qualname)
-            if chart is None:
-                return NOT_FOUND
-            return _cached(snapshot, ("chart", i, qualname), lambda: to_dot(chart), render)
+    try:
+        qualname = unquote(segment, errors="strict")
+    except UnicodeDecodeError:
+        return NOT_FOUND
+    chart = _find_chart(snapshot, i, qualname)
+    if chart is None:
+        return NOT_FOUND
+    return _cached(snapshot, ("chart", i, qualname), lambda: to_dot(chart), render)
 
 
-def _docs(snapshot: Snapshot) -> list:
+def _document_index(text: str, snapshot: Snapshot) -> int | None:
+    """The document index named by ``text``, or ``None``.
+
+    Only ASCII digits count: ``\\d`` would also match other scripts' digits. A valid index
+    has at most as many digits as the document count (and ``int()`` has a digit limit).
+    """
+    if not re.fullmatch(r"[0-9]+", text) or len(text) > len(str(len(snapshot.documents))):
+        return None
+    i = int(text)
+    return i if i < len(snapshot.documents) else None
+
+
+def _docs(snapshot: Snapshot) -> list[Document]:
     return list(snapshot.documents)
 
 
