@@ -1,6 +1,7 @@
 import os
 import sys
 import threading
+import time
 from collections.abc import Callable
 from pathlib import Path
 
@@ -297,3 +298,15 @@ def test_failed_build_is_retried_without_further_changes(tmp_path, monkeypatch):
     assert ws.refresh() is True
     assert ws.current().generation == 2
     assert [f.qualname for f in ws.current().entries[0].functions] == ["f", "g"]
+
+
+def test_same_size_edit_with_restored_mtime_triggers_refresh(tmp_path):
+    m = write(tmp_path / "m.py", F)
+    ws = make([m])
+    before = m.stat()
+    time.sleep(0.05)  # the inode change time has a coarse clock on some file systems
+    m.write_text(F.replace("def f", "def h"))
+    os.utime(m, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert m.stat().st_size == before.st_size
+    assert ws.refresh() is True
+    assert [f.qualname for f in ws.current().entries[0].functions] == ["h"]

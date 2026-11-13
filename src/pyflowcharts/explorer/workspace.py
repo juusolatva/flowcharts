@@ -85,13 +85,18 @@ def snapshot_json(snapshot: Snapshot) -> dict[str, Any]:
     }
 
 
-def _stat(path: Path) -> tuple[int | None, int | None]:
-    """``(mtime_ns, size)``, or ``(None, None)`` when ``stat()`` fails."""
+def _stat(path: Path) -> tuple[int | None, ...]:
+    """What identifies a file version: ``(mtime_ns, size, ctime_ns, inode)``.
+
+    The inode change time catches edits that keep the size and restore the modification time,
+    and the inode catches editors that save by renaming a new file into place. All ``None``
+    when ``stat()`` fails.
+    """
     try:
         st = path.stat()
     except OSError:
-        return (None, None)
-    return (st.st_mtime_ns, st.st_size)
+        return (None, None, None, None)
+    return (st.st_mtime_ns, st.st_size, st.st_ctime_ns, st.st_ino)
 
 
 @dataclass(frozen=True)
