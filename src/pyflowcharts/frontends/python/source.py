@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from importlib.util import decode_source
 
 import tree_sitter_python
@@ -16,6 +17,12 @@ _PARSER = Parser(Language(tree_sitter_python.language()))
 _NO_SPACE_AFTER = b"([{"
 _NO_SPACE_BEFORE = b")]},."
 _DROPPED = frozenset({"comment", "line_continuation"})
+
+
+def identifier(node: Node) -> str:
+    """A name or dotted name as Python reads it: NFKC-normalized (PEP 3131), so different
+    spellings of one name (``é`` precomposed or as ``e`` plus an accent) are equal."""
+    return unicodedata.normalize("NFKC", (node.text or b"").decode())
 
 
 class Source:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
@@ -10,7 +11,7 @@ from tree_sitter import Node
 
 from pyflowcharts.cfg.model import CallSite
 from pyflowcharts.frontends.python.discovery import Found
-from pyflowcharts.frontends.python.source import Source
+from pyflowcharts.frontends.python.source import Source, identifier
 from pyflowcharts.ir import CallRef
 
 
@@ -26,10 +27,13 @@ class ModuleInfo:
 def module_info(key: PurePosixPath) -> ModuleInfo:
     """``pkg/io/load`` → ``pkg.io.load`` in package ``pkg.io``; ``pkg/__init__`` → ``pkg``
     in package ``pkg``; a bare ``__init__`` has no module name."""
-    package = key.parts[:-1]
-    if key.name == "__init__":
+    # NFC, not NFKC: macOS treats the encodings of one character (é, or e plus an accent) as
+    # one file name, but Python does not normalize file names, so ``ﬁ.py`` is never ``fi``.
+    parts = tuple(unicodedata.normalize("NFC", part) for part in key.parts)
+    package = parts[:-1]
+    if parts[-1:] == ("__init__",):
         return ModuleInfo(".".join(package), package)
-    return ModuleInfo(".".join(key.parts), package)
+    return ModuleInfo(".".join(parts), package)
 
 
 def call_roots(stmt: Node) -> list[Node]:
@@ -72,10 +76,12 @@ class _Name:
 @dataclass(frozen=True)
 class _Module:
     """``import x.y`` (``base`` ``x``, reachable ``x`` and ``x.y``) or ``import x.y as z``
-    (``base`` and reachable ``x.y`` only)."""
+    (``base`` and reachable ``x.y`` only). ``certain`` when the import always runs: it sits
+    directly in a module's or function's body, not in a ``try``, ``if`` or other block."""
 
     base: str
     reachable: frozenset[str]
+    certain: bool = False
 
 
 type _Binding = _Name | _Module
@@ -107,14 +113,7 @@ class _Scope:
         self.definitions.setdefault(name, (kind, qualname))
 
     def bind(self, name: str, binding: _Binding) -> None:
-        bindings = self.imports.setdefault(name, [])
-        if isinstance(binding, _Module):
-            # ``import a.b`` and ``import a.c`` bind one module ``a`` reaching both.
-            for i, old in enumerate(bindings):
-                if isinstance(old, _Module) and old.base == binding.base:
-                    bindings[i] = _Module(old.base, old.reachable | binding.reachable)
-                    return
-        bindings.append(binding)
+        self.imports.setdefault(name, []).append(binding)
 
 
 class Resolver:
@@ -169,16 +168,17 @@ class Resolver:
                     self._index(child, prefix, scope, cls)
 
     def _import(self, stmt: Node, scope: _Scope) -> None:
+        certain = _always_runs(stmt)
         for name in stmt.children_by_field_name("name"):
             if name.type == "aliased_import":
                 dotted, alias = name.child_by_field_name("name"), name.child_by_field_name("alias")
                 if dotted is not None and alias is not None:
                     target = _text(dotted)
-                    scope.bind(_text(alias), _Module(target, frozenset({target})))
+                    scope.bind(_text(alias), _Module(target, frozenset({target}), certain))
             elif name.type == "dotted_name":
                 parts = _text(name).split(".")
                 reachable = frozenset(".".join(parts[:i]) for i in range(1, len(parts) + 1))
-                scope.bind(parts[0], _Module(parts[0], reachable))
+                scope.bind(parts[0], _Module(parts[0], reachable, certain))
 
     def _import_from(self, stmt: Node, scope: _Scope) -> None:
         source = stmt.child_by_field_name("module_name")
@@ -240,9 +240,53 @@ class Resolver:
                 out += self._own(".".join([qualname, *rest]) if rest else f"{qualname}.__init__")
             elif not rest:
                 out += self._own(qualname)
-        for binding in table.imports.get(first, []):
-            out += _through(binding, rest)
-        return out
+        return out + _import_candidates(table.imports.get(first, []), rest)
+
+
+def _import_candidates(bindings: list[_Binding], rest: list[str]) -> list[CallRef]:
+    """Candidates through the imports binding one name, in source order. Each import counts
+    on its own (it may sit in one branch of a ``try`` or ``if``), but the ``import`` bindings
+    of one package come together, the longest module first: with ``import a.b`` and
+    ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
+    packages: dict[str, list[_Module]] = {}
+    for binding in bindings:
+        if isinstance(binding, _Module):
+            packages.setdefault(binding.base, []).append(binding)
+    out: list[CallRef] = []
+    for binding in bindings:
+        match binding:
+            case _Name():
+                out += _through(binding, rest)
+            case _Module(base) if base in packages:
+                out += _package_candidates(packages.pop(base), rest)
+    return out
+
+
+def _package_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef]:
+    """Candidates through the ``import`` bindings of one package, the longest module first.
+    A module reachable through an import that always runs is certainly a module, so shorter
+    fallbacks through it are dropped (none at all when the whole chain is a module)."""
+    full = modules[0].base.split(".") + rest
+    certain = {path for module in modules if module.certain for path in module.reachable}
+    known = next((k for k in range(len(full), 0, -1) if ".".join(full[:k]) in certain), 0)
+    if known == len(full):
+        return []  # the chain certainly names a module, and modules are not called
+    refs = [ref for module in modules for ref in _through(module, rest)]
+    refs = [ref for ref in refs if ref.module.count(".") + 1 >= known]
+    return sorted(refs, key=lambda ref: -ref.module.count("."))
+
+
+def _always_runs(stmt: Node) -> bool:
+    """Whether ``stmt`` always runs once its module's or function's body does: it sits in that
+    body directly or through ``finally`` blocks only. A ``with`` body does not count: its
+    context manager can swallow the exception (``with suppress(ImportError):``)."""
+    child, node = stmt, stmt.parent
+    while node is not None and node.type not in ("module", "function_definition"):
+        through_finally = node.type == "try_statement" and child.type == "finally_clause"
+        if node.type not in ("block", "finally_clause") and not through_finally:
+            return False
+        child, node = node, node.parent
+    return True
 
 
 def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:
@@ -299,7 +343,7 @@ def _parameter_name(param: Node) -> str:
 
 
 def _text(node: Node) -> str:
-    return (node.text or b"").decode()
+    return identifier(node)
 
 
 def _name(node: Node) -> str:

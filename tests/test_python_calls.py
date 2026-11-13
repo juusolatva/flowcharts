@@ -16,6 +16,10 @@ from pyflowcharts.ir import ChartOptions
         ("pkg/__init__", "pkg", ("pkg",)),
         ("util", "util", ()),
         ("__init__", "", ()),
+        # NFC only: macOS treats the two spellings of é as one file name, but no file
+        # system turns "ﬁ" into "fi", and Python does not normalize file names
+        ("cafe\u0301/m", "caf\u00e9.m", ("caf\u00e9",)),
+        ("\ufb01", "\ufb01", ()),
     ],
 )
 def test_module_info(key, name, package):
@@ -247,11 +251,65 @@ def f():
         # module imports
         ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
         ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),
-        # submodule imports under one name merge: the longest module prefix wins
+        # submodule imports under one name: the longest module comes first
         ("import a.b\nimport a.c\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
         ("import a.c\nimport a.b\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
         ("import a.b\nimport a.c\ndef f():\n    a.g()\n", "f", "a.g", [("a", "g")]),
+        # unrelated imports bound to one name keep source order (the first one is preferred)
+        (
+            "try:\n    import fast as impl\nexcept ImportError:\n    import pkg.slow as impl\ndef f():\n    impl.run()\n",
+            "f",
+            "impl.run",
+            [("fast", "run"), ("pkg.slow", "run")],
+        ),
+        # an import that may not run (in a try or if) counts on its own; one that always runs
+        # makes its modules certain, so shorter fallbacks through them are dropped
         ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", []),
+        ("def f():\n    import a.b\n    import a.c\n    a.c()\n", "f", "a.c", []),
+        # finally blocks always run; a with body may not (its context manager can swallow
+        # the ImportError, as contextlib.suppress does)
+        (
+            "import a.b\nwith suppress(ImportError):\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b\ntry:\n    pass\nfinally:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [],
+        ),
+        (
+            "import a.b\ntry:\n    pass\nelse:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "try:\n    import a.b\nexcept ImportError:\n    import a.c\ndef f():\n    a.c.f()\n",
+            "f",
+            "a.c.f",
+            [("a.c", "f"), ("a", "c.f")],
+        ),
+        (
+            "import a.b\nif x:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "try:\n    import a.b\nexcept ImportError:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b.c\nimport a.b\ndef f():\n    a.b.c.d()\n",
+            "f",
+            "a.b.c.d",
+            [("a.b.c", "d")],
+        ),
         ("import x.y as z\ndef f():\n    z.C.m()\n", "f", "z.C.m", [("x.y", "C.m")]),
         ("import x.y as z\ndef f():\n    x.g()\n", "f", "x.g", []),
         ("from p import x as a\ndef f():\n    a.g()\n", "f", "a.g", [("p.x", "g"), ("p", "x.g")]),
@@ -358,3 +416,14 @@ def test_every_parameter_kind_shadows():
     ]
     assert [r.qualname for r in fn(d, "run").calls[4].candidates] == ["e"]  # not a parameter
     assert fn(d, "s").calls[0].candidates == []
+
+
+def test_names_are_nfkc_normalized_like_python():
+    composed, decomposed = "caf\u00e9", "cafe\u0301"
+    src = f"from m{decomposed} import {decomposed}\ndef f():\n    {composed}()\n"
+    assert cands(src, "f", composed) == [
+        (f"m{composed}", composed),
+        (f"m{composed}", f"{composed}.__init__"),
+    ]
+    src = f"def {composed}(): pass\ndef f():\n    {decomposed}()\n"
+    assert cands(src, "f", decomposed) == [("pkg.mod", composed)]
