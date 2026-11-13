@@ -1,7 +1,7 @@
 # flowcharts — Design
 
 **Date:** 2026-11-11
-**Status:** Implemented. Amended on 2026-11-12 by `2026-11-12-tree-sitter-frontend-design.md` (tree-sitter frontend, shared CFG engine, per-function syntax errors), which wins where the two disagree.
+**Status:** Implemented. Amended on 2026-11-12 by `2026-11-12-tree-sitter-frontend-design.md` (tree-sitter frontend, shared CFG engine, per-function syntax errors), which wins where the two disagree. Amended on 2026-11-13 by `2026-11-13-exception-edges-design.md` (per-statement exception edges, `return`/`raise` through `finally`) and `2026-11-13-directories-and-module-code-design.md` (directory inputs, module-level charts, schema version 2), both folded in below.
 
 ## Purpose
 
@@ -11,14 +11,16 @@ A Python CLI tool that reads Python source files and produces a **control-flow f
 
 **In scope (MVP)**
 - Python source files (`.py`) parsed with tree-sitter (`tree-sitter-python`), validated with the standard-library `ast` module.
+- Files and directories as inputs. A directory is walked recursively and its output mirrors the source tree.
 - One flowchart per function: module-level functions, methods (`Class.method`), nested functions (`outer.inner`), and `async def`.
+- One module-level chart per file whose top level does work (see "Module-level charts").
 - Output formats: `json`, `dot`, `svg`, `png`, `mermaid`.
 - Detail options: show/hide parameters, return values and variable assignments.
 
 **Out of scope (for now)**
 - Other languages. The architecture allows them (see "Frontends"), but none are built.
 - The GUI explorer. Only its input format (JSON) is built now.
-- Directory recursion, module-level (non-function) code, call graphs between functions.
+- Class bodies beyond their methods, `.gitignore` support, call graphs between functions.
 
 ## Architecture
 
@@ -33,16 +35,18 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 
 ## IR
 
-- `Document`: `schema_version` (= 1), `language` (`"python"`), `source` (path as given), `functions: list[FunctionChart]`.
-- `FunctionChart`: `qualname` (unique within the document), `name`, `is_async`, `parameters: list[Parameter]`, `returns` (annotation text or null), `location`, `nodes`, `edges`.
+- `Document`: `source` (path as given or as reached by a directory walk), `language` (`"python"`), `functions: list[FunctionChart]`, `module: Chart | null`, `schema_version` (= 2).
+- `Chart`: `qualname`, `location`, `nodes`, `edges`. The module chart is a `Chart` with qualname `<module>`.
+- `FunctionChart(Chart)`: adds `name`, `is_async`, `parameters: list[Parameter]`, `returns` (annotation text or null). `qualname` is unique within the document. In JSON its keys come in the order `qualname`, `location`, `nodes`, `edges`, `name`, `is_async`, `parameters`, `returns`.
 - `Parameter`: `name`, `annotation`, `default` (source text or null), `kind` (`positional_only | positional_or_keyword | var_positional | keyword_only | var_keyword`).
 - `Node`: `id`, `kind`, `label`, `location` (`line`, `column`, `end_line`, `end_column`, or null for synthetic nodes).
 - `Edge`: `source`, `target`, `label` (null or e.g. `"True"`, `"False"`, `"next"`, `"done"`, `"exception"`, `"case …"`).
 
 Rules:
+- Schema version 2 added `Chart`, `Document.module` and the key order above. `from_json` still reads version 1 documents (as `module = null`) and keeps the version it read.
 - The IR always holds the full signature data. Display options only change node labels, plus which assignment nodes exist.
 - **No layout in the IR** (no x/y). Layout belongs to Graphviz or the GUI.
-- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax.
+- **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax. The module chart's IDs use the qualname `<module>` (`<module>#start`, `<module>#L3C0`), which no function qualname can equal; the DOT backend quotes the graph name with `graphviz.nohtml` so the brackets survive.
 - Output is deterministic: the same input gives byte-identical JSON, DOT and Mermaid.
 
 ## Node kinds and shapes
@@ -72,7 +76,13 @@ Rules:
 - Code after `return`/`raise`/`break`/`continue` (unreachable) is still emitted as nodes with no incoming edges.
 - Any statement type without its own rule becomes a process node labelled with its source text.
 
-**Known simplifications** (documented, not bugs): handlers are assumed to catch whatever reaches them, so the uncaught path out of a `try` that has handlers is not drawn. The `try` node itself has no exception edges, so a `try` whose body has no nodes leaves its handlers unreachable.
+## Module-level charts
+
+- A file gets a module chart when its top level (not class or function bodies) has a statement other than a docstring, `import`/`from … import`, `def`/`class` (decorated or not), an assignment (`=`, augmented, annotated, even with a call in the value), a `type` alias, `pass`, `...` or `global`. Library modules that only import and define things get none. `--no-module` turns module charts off.
+- The chart holds all top-level statements (a leading docstring dropped) with the same rules as a function body: imports and definitions become process nodes, plain assignments are hidden unless `--variables`, and so on. Its start node is `module <stem>`. Its location runs from the first statement (leading comments such as a shebang excluded) to the last token.
+- No module chart is built when there is a syntax error outside every function. A tree-sitter error outside every function that `ast` accepts (newer syntax) skips it with `unsupported syntax in module code; module chart skipped`, and a top-level `break`/`continue` with `syntax error in module code; module chart skipped`. Those two warnings carry the qualname `<module>`, so `--function` treats them like a skipped function.
+
+**Known simplifications** (documented, not bugs): handlers are assumed to catch whatever reaches them, so the uncaught path out of a `try` that has handlers is not drawn. The `try` node itself has no exception edges, so a `try` whose body has no nodes leaves its handlers unreachable. Class bodies are charted only through their methods.
 
 ## Labels
 
@@ -84,29 +94,38 @@ Rules:
 ## Output layout & CLI
 
 ```
-pyflowcharts FILE [FILE ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
-             [--no-parameters] [--no-returns] [--function QUALNAME ...] [--max-label N]
+pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
+             [--no-parameters] [--no-returns] [--no-module]
+             [--function QUALNAME ...] [--exclude GLOB ...] [--max-label N]
 ```
 
 - Defaults: `-o flowcharts`, `-f svg json`.
 - Only the selected formats are written (e.g. `-f mermaid` writes no JSON).
-- `OUTDIR/<stem>.json`: one JSON document per source file (when `json` is selected).
-- `OUTDIR/<stem>/<qualname>.<ext>`: one file per function for `dot`, `svg`, `png`, `mermaid` (`.mmd`).
-- `--function` restricts all outputs to the given qualnames. It accepts several names (`--function a b`) and can be repeated (`--function a --function b`). Put the input files before options that take several values.
+- Each `PATH` is a file or a directory. A directory is walked recursively: only files with a supported extension, no hidden files or directories (below the argument), no `__pycache__`, directory symlinks not followed, only regular files, sorted by relative path. A file reached twice is charted once, and counts as named explicitly if any mention was explicit.
+- `--exclude GLOB` (several values, repeatable) applies only to walked files: a pattern without `/` matches any file or directory name, one with `/` the POSIX path relative to the directory argument, and a trailing `/` restricts it to directories. Matching is `fnmatchcase`; a matched directory is not walked.
+- Each file has an output key `K`: its stem when named explicitly, or its path relative to the directory argument without extension when walked.
+- `OUTDIR/K.json`: one JSON document per source file (when `json` is selected).
+- `OUTDIR/K.<ext>`: the module chart for `dot`, `svg`, `png`, `mermaid` (`.mmd`).
+- `OUTDIR/K/<qualname>.<ext>`: one file per function. Directories are created only for files that are written.
+- `--function` restricts all outputs to the given qualnames; `<module>` selects module charts. It accepts several names (`--function a b`) and can be repeated (`--function a --function b`). The list of available names is deduplicated across files. Put the input paths before options that take several values.
 
 ## Errors and exit codes
 
 | Situation | Behaviour | Exit |
 |---|---|---|
 | Syntax error in a function (including `break`/`continue` outside a loop) | `path:line: warning: syntax error in 'qualname'; function skipped`; the other functions are still written | 1 |
-| Syntax error outside every function | `path:line: warning: syntax error outside functions; nearby code may be missing`; functions still written | 1 |
+| Syntax error outside every function | `path:line: warning: syntax error outside functions; nearby code may be missing`; functions still written, no module chart | 1 |
 | Undecodable source, null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
 | Unknown `--function` name | error listing the available qualnames | 1 |
-| Two inputs with the same stem | error before anything is written | 1 |
+| Two inputs with the same output key, or one key a directory prefix of another (`pkg/mod.py` beside `pkg/mod/`) | `error: output name collision: …` before anything is written | 1 |
+| Top-level `break`/`continue` outside a loop | `path:line: warning: syntax error in module code; module chart skipped`; other charts still written | 1 |
+| Tree-sitter misreads top-level syntax that `ast` accepts | `path:line: warning: unsupported syntax in module code; module chart skipped`; other charts still written | 1 |
+| Directory that cannot be read | `DIR: error: cannot read directory: reason`; the rest of the walk continues | 1 |
+| Directory with no source files | `warning: DIR: no source files found` | 0 |
 | Code too deeply nested to parse or chart | `path: error: code is too deeply nested …`; other files still processed | 1 |
 | An output file or directory cannot be written | `error: cannot write PATH: reason`; other outputs still written | 1 |
 | `dot` binary missing while `svg`/`png` requested | error explaining how to install Graphviz; non-image outputs still written | 2 |
-| File has no functions | warning on stderr; JSON with empty `functions` written if `json` is selected | 0 |
+| File named on the command line with nothing to chart (no function charts, no module chart, no warnings) | `warning: PATH: nothing to chart`; JSON written if `json` is selected. Not printed for walked files, nor because of `--function` filtering | 0 |
 
 Source files are read as bytes so that PEP 263 coding cookies and BOMs are honoured. Validity is decided per function by `ast.parse` as described in the tree-sitter spec; compiler-only errors other than `break`/`continue` outside a loop are not checked.
 

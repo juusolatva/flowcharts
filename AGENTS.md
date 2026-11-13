@@ -4,7 +4,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 ## Project
 
-`flowcharts` is a CLI (`pyflowcharts`) that turns each function in a Python source file into a control-flow flowchart. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
+`flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
 
 - Design spec: `docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`
 - MVP implementation plan: `docs/superpowers/plans/2026-11-11-python-flowcharts-mvp.md`
@@ -21,7 +21,7 @@ uv run pytest                            # run all tests
 uv run pytest tests/test_cli.py -v       # run one test file
 uv run ruff check                        # lint
 uv run ruff format                       # format
-uv run pyflowcharts FILE.py -o OUTDIR    # run the CLI
+uv run pyflowcharts PATH -o OUTDIR       # run the CLI (files or directories)
 ```
 
 SVG/PNG output needs the system Graphviz `dot` binary (`sudo apt install graphviz`). Tests that need it are skipped when it's missing.
@@ -35,11 +35,13 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
                                              cfg/finally_.py                           backends/mermaid.py
 ```
 
-- `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `FunctionChart`, `Node`, `Edge`, …). This is the contract between frontends and backends.
+- `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `Chart`, `FunctionChart`, `Node`, `Edge`, …). This is the contract between frontends and backends.
 - `src/pyflowcharts/cfg/`: the language-neutral statement model (`Step`, `Branch`, `Loop`, `Try`, …) and the chart builder (frontier walk, node IDs, reveal rule, `finally` copies). Frontends produce the model; the builder produces nodes and edges.
-- `src/pyflowcharts/frontends/`: the `Frontend` protocol (returning a `ParseResult` of document plus warnings) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning.
+- `src/pyflowcharts/frontends/`: the `Frontend` protocol (returning a `ParseResult` of document plus warnings) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning. `python/module.py` decides whether a file's top level does work and builds its module chart.
 - `src/pyflowcharts/backends/`: renderers that depend only on the IR.
-- `src/pyflowcharts/cli.py`: argument parsing, file output and exit codes.
+- `src/pyflowcharts/inputs.py`: expands path arguments (directory walk, `--exclude`), deduplicates them, assigns each file its output key and checks for output collisions.
+- `src/pyflowcharts/output.py`: writes each document under its output key in the selected formats.
+- `src/pyflowcharts/cli.py`: argument parsing, `--function` selection, warnings and exit codes.
 
 ## Rules
 
@@ -50,7 +52,7 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 
 **IR and JSON format**
 - The IR holds no layout data (no x/y). Layout belongs to Graphviz or the GUI.
-- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax).
+- Node IDs follow `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}[~suffix]` (duplicated finally bodies add `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` naming the owning `try`), must be unique within a chart, and must never contain `:` (DOT treats it as port syntax). The module-level chart uses the qualname `<module>` (`MODULE_QUALNAME`), which no function qualname can equal.
 - Output must be deterministic: the same input gives byte-identical JSON, DOT and Mermaid. No sets, hashes or timestamps in the output order.
 - Any change to the JSON shape requires bumping `SCHEMA_VERSION` in `ir.py`, updating `from_json`, and noting it in the spec.
 
@@ -74,4 +76,5 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 
 - Handlers are assumed to catch whatever reaches them: the uncaught path out of a `try` with handlers is not drawn, and the `try` node itself has no exception edges.
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
-- Module-level code, directory recursion and call graphs are out of scope for the MVP.
+- Class bodies are charted only through their methods.
+- Call graphs are out of scope for now.
