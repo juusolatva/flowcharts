@@ -39,21 +39,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         return explore(raw[1:])
     args = _parser().parse_args(raw)
     formats = list(dict.fromkeys(args.format))  # de-duplicate, keep order
-    expansion = expand(args.paths, args.exclude)
-    # The key is only taken when a picture will actually be written.
-    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
-    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
-    if (collision := collision_error(expansion.inputs, reserved)) is not None:
-        print(collision, file=sys.stderr)
+    parsed = _expand_and_parse(args, formats)
+    if parsed is None:
         return EXIT_ERROR
-
-    for message in expansion.warnings + expansion.errors:
-        print(message, file=sys.stderr)
-    parsed = parse_all(expansion.inputs, chart_options(args))
-    for message in parsed.read_errors:
-        print(message, file=sys.stderr)
-    results = parsed.results
-    ok = not parsed.read_errors and not expansion.errors
+    results, ok = parsed
 
     # Decided on the full result, so a file that only lacks the requested functions is quiet.
     empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
@@ -73,6 +62,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     if writer.write_failed or not ok:
         return EXIT_ERROR
     return EXIT_NO_GRAPHVIZ if writer.graphviz_missing else EXIT_OK
+
+
+def _expand_and_parse(
+    args: argparse.Namespace, formats: list[str]
+) -> tuple[list[tuple[Input, ParseResult]], bool] | None:
+    """Expand the paths and parse them, printing the messages on the way.
+
+    Returns the linked results and whether everything was read, or ``None`` on an output
+    name collision.
+    """
+    expansion = expand(args.paths, args.exclude)
+    # The key is only taken when a picture will actually be written.
+    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
+    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
+    if (collision := collision_error(expansion.inputs, reserved)) is not None:
+        print(collision, file=sys.stderr)
+        return None
+
+    for message in expansion.warnings + expansion.errors:
+        print(message, file=sys.stderr)
+    parsed = parse_all(expansion.inputs, chart_options(args))
+    for message in parsed.read_errors:
+        print(message, file=sys.stderr)
+    return parsed.results, not parsed.read_errors and not expansion.errors
 
 
 def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
