@@ -104,10 +104,10 @@ def test_missing_graphviz(tmp_path, monkeypatch, capsys):
     assert "Graphviz" in capsys.readouterr().err and (tmp_path / "o/m.json").exists()
 
 
-def test_no_functions_warns(tmp_path, capsys):
+def test_nothing_to_chart_warns(tmp_path, capsys):
     src = write(tmp_path, "m.py", "X = 1\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
-    assert "no functions found" in capsys.readouterr().err
+    assert f"warning: {src}: nothing to chart" in capsys.readouterr().err
     assert from_json((tmp_path / "o/m.json").read_text()).functions == []
 
 
@@ -168,11 +168,11 @@ def test_skipped_function_warns_exits_1_and_writes_the_rest(tmp_path, capsys):
     assert (tmp_path / "o/m/good.mmd").exists()
 
 
-def test_all_functions_skipped_writes_empty_json_without_no_functions_warning(tmp_path, capsys):
+def test_all_functions_skipped_writes_empty_json_without_nothing_to_chart(tmp_path, capsys):
     src = write(tmp_path, "m.py", "def broken(:\n    pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
     err = capsys.readouterr().err
-    assert "function skipped" in err and "no functions found" not in err
+    assert "function skipped" in err and "nothing to chart" not in err
     assert from_json((tmp_path / "o/m.json").read_text()).functions == []
 
 
@@ -194,3 +194,106 @@ def test_outside_error_warns_even_with_function_filter(tmp_path, capsys):
     src = write(tmp_path, "m.py", "x = = 1\ndef good():\n    return 1\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "good"]) == 1
     assert "syntax error outside functions" in capsys.readouterr().err
+
+
+def outputs(root):
+    return {p.relative_to(root).as_posix() for p in root.rglob("*") if p.is_file()}
+
+
+def test_directory_input_mirrors_tree(tmp_path):
+    write(tmp_path / "src/pkg/io", "load.py", "def f(): pass\nmain()\n")
+    write(tmp_path / "src/pkg", "__init__.py", "")
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json", "dot"]) == 0
+    assert outputs(tmp_path / "o") == {
+        "pkg/__init__.json",
+        "pkg/io/load.json",
+        "pkg/io/load.dot",
+        "pkg/io/load/f.dot",
+    }
+    doc = from_json((tmp_path / "o/pkg/io/load.json").read_text())
+    assert doc.source == str(tmp_path / "src/pkg/io/load.py") and doc.module.qualname == "<module>"
+
+
+def test_walked_empty_file_does_not_warn(tmp_path, capsys):
+    write(tmp_path / "d", "__init__.py", "")
+    assert main([str(tmp_path / "d"), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    assert capsys.readouterr().err == ""
+
+
+def test_explicit_file_also_walked_still_warns(tmp_path, capsys):
+    empty = write(tmp_path / "d", "e.py", "")
+    assert main([str(tmp_path / "d"), str(empty), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    assert f"warning: {empty}: nothing to chart" in capsys.readouterr().err
+
+
+def test_empty_directory_warning(tmp_path, capsys):
+    (tmp_path / "e").mkdir()
+    assert main([str(tmp_path / "e"), "-o", str(tmp_path / "o")]) == 0
+    assert "no source files found" in capsys.readouterr().err
+
+
+def test_exclude_option(tmp_path):
+    write(tmp_path / "s/venv", "v.py", "def v(): pass\n")
+    write(tmp_path / "s", "a.py", "def a(): pass\n")
+    args = ["-o", str(tmp_path / "o"), "-f", "json", "--exclude", "venv"]
+    assert main([str(tmp_path / "s"), *args]) == 0
+    assert sorted(p.name for p in (tmp_path / "o").iterdir()) == ["a.json"]
+
+
+def test_exclude_rejects_bare_slash(tmp_path, capsys):
+    with pytest.raises(SystemExit) as exc:
+        main([str(tmp_path), "--exclude", "/"])
+    assert exc.value.code == 2
+
+
+def test_prefix_collision_writes_nothing(tmp_path, capsys):
+    write(tmp_path / "s", "mod.py", "def f(): pass\n")
+    write(tmp_path / "s/mod", "__init__.py", "")
+    assert main([str(tmp_path / "s"), "-o", str(tmp_path / "o")]) == 1
+    assert "share the directory 'mod'" in capsys.readouterr().err
+    assert not (tmp_path / "o").exists()
+
+
+def test_no_module_option(tmp_path):
+    src = write(tmp_path, "s.py", "def f(): pass\nmain()\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--no-module"]) == 0
+    assert from_json((tmp_path / "o/s.json").read_text()).module is None
+
+
+def test_function_selects_module(tmp_path):
+    src = write(tmp_path, "s.py", "def f(): pass\nmain()\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "<module>"]) == 0
+    doc = from_json((tmp_path / "o/s.json").read_text())
+    assert doc.functions == [] and doc.module is not None and doc.schema_version == 2
+    assert main([str(src), "-o", str(tmp_path / "o2"), "-f", "json", "--function", "f"]) == 0
+    assert from_json((tmp_path / "o2/s.json").read_text()).module is None
+
+
+def test_skipped_module_and_function_filter(tmp_path, capsys):
+    src = write(tmp_path, "s.py", "def good(): pass\nbreak\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "good"]) == 0
+    assert "module chart skipped" not in capsys.readouterr().err
+    args = ["-o", str(tmp_path / "o2"), "-f", "json", "--function", "<module>"]
+    assert main([str(src), *args]) == 1
+    assert "syntax error in module code; module chart skipped" in capsys.readouterr().err
+
+
+def test_available_list_is_deduplicated(tmp_path, capsys):
+    a = write(tmp_path / "a", "a.py", "def f(): pass\nmain()\n")
+    b = write(tmp_path / "b", "b.py", "def f(): pass\nmain()\n")
+    assert main([str(a), str(b), "-o", str(tmp_path / "o"), "--function", "zzz"]) == 1
+    assert "available: f, <module>" in capsys.readouterr().err
+
+
+def test_no_nothing_to_chart_after_function_filter(tmp_path, capsys):
+    a = write(tmp_path, "a.py", "def foo(): pass\n")
+    b = write(tmp_path, "b.py", "def bar(): pass\n")
+    assert main([str(a), str(b), "-o", str(tmp_path / "o"), "-f", "json", "--function", "foo"]) == 0
+    assert "nothing to chart" not in capsys.readouterr().err
+
+
+def test_syntax_error_only_file_has_no_nothing_to_chart(tmp_path, capsys):
+    src = write(tmp_path, "s.py", "x = = 1\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
+    err = capsys.readouterr().err
+    assert "syntax error outside functions" in err and "nothing to chart" not in err
