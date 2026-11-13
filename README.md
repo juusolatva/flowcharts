@@ -108,12 +108,13 @@ uv run pyflowcharts explore a.py b.py --port 8765 --no-browser
 |---|---|
 | `--port N` | Port to listen on, 0 to 65535 (default 0, a free port) |
 | `--no-browser` | Only print the URL |
+| `--version` | Print the version and exit |
 | `--variables`, `--no-parameters`, `--no-returns`, `--no-module`, `--max-label N` | As for charting |
 | `--exclude GLOB ...` | As for charting; put the input paths before it |
 
 `-o`, `-f`, `--function` and `--no-call-graph` do not exist here. A file literally named `explore` must be passed as `./explore`.
 
-The server listens on `127.0.0.1` only and rejects requests for other host names. The printed URL carries a random token that is exchanged for a cookie (named per port, so two explorers can run side by side); requests without it get 403. Press Ctrl+C to stop.
+The server listens on `127.0.0.1` only and rejects requests for other host names. The printed URL carries a random token that is exchanged for a cookie (named per port, so two explorers can run side by side); requests without it get 403. Browsers send cookies to every server on `127.0.0.1`/`localhost` regardless of port, so other local servers you run can see the token cookie; it stays valid only while that explorer runs. Press Ctrl+C to stop.
 
 The explorer watches the files and directories you gave it. After you save a change it re-parses the whole run, so charts, calls and source stay current, and the browser updates itself ("reparsing" and "reconnecting" show in the top bar).
 
