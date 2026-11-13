@@ -53,7 +53,7 @@ def test_document_metadata_and_locations():
     raw = b"# -*- coding: latin-1 -*-\ndef f():\n    print('\xe9')\n    # trailing\n"
     r = PythonFrontend().parse(raw, "t.py", ChartOptions())
     c = r.document.functions[0]
-    assert (r.document.language, r.document.schema_version) == ("python", 1)
+    assert (r.document.language, r.document.schema_version) == ("python", 2)
     assert c.nodes[2].label == "print('é')" and c.location.end_line == 3
     assert c.is_async is False and c.name == "f"
 
