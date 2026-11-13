@@ -5,7 +5,10 @@ import pytest
 
 from pyflowcharts.inputs import collision_error, expand
 
-needs_non_root = pytest.mark.skipif(os.geteuid() == 0, reason="root can read everything")
+needs_non_root = pytest.mark.skipif(
+    not hasattr(os, "geteuid") or os.geteuid() == 0,
+    reason="root can read everything, and chmod(0) does not block reading on Windows",
+)
 
 
 def tree(root: Path, *relpaths: str) -> None:
