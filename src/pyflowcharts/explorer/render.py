@@ -20,7 +20,7 @@ def svg(dot_source: str, *, timeout: float = 30.0, dot: str = "dot") -> bytes:
     except subprocess.TimeoutExpired:
         raise RenderError(f"rendering took longer than {timeout:g} s") from None
     except OSError as error:
-        raise RenderError(f"Graphviz 'dot' could not be run: {error.strerror}") from error
+        raise RenderError(f"Graphviz 'dot' could not be run: {error.strerror or error}") from error
     if result.returncode != 0:
         message = result.stderr.decode(errors="replace").strip()
         raise RenderError(message or f"dot exited with status {result.returncode}")

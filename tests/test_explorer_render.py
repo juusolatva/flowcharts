@@ -45,3 +45,12 @@ def test_silent_failure_reports_exit_status(tmp_path):
 
 def test_graphviz_missing_text_unchanged():
     assert GRAPHVIZ_MISSING == GRAPHVIZ_NOT_FOUND + " or use --format json dot mermaid"
+
+
+def test_oserror_without_strerror_still_explains(monkeypatch):
+    def boom(*args, **kwargs):
+        raise OSError("boom")
+
+    monkeypatch.setattr("pyflowcharts.explorer.render.subprocess.run", boom)
+    with pytest.raises(RenderError, match="could not be run: boom"):
+        svg("digraph {}")
