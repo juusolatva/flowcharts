@@ -261,6 +261,13 @@ def f():
             [("a.c", "f"), ("a", "c.f")],
         ),
         ("import a.b\nimport a.c\ndef f():\n    a.g()\n", "f", "a.g", [("a", "g")]),
+        # unrelated imports bound to one name keep source order (the first one is preferred)
+        (
+            "try:\n    import fast as impl\nexcept ImportError:\n    import pkg.slow as impl\ndef f():\n    impl.run()\n",
+            "f",
+            "impl.run",
+            [("fast", "run"), ("pkg.slow", "run")],
+        ),
         # each import still counts on its own (it may be in one branch of a try or if)
         ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", [("a", "c")]),
         (

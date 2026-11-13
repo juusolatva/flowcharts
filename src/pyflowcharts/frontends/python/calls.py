@@ -233,22 +233,27 @@ class Resolver:
                 out += self._own(".".join([qualname, *rest]) if rest else f"{qualname}.__init__")
             elif not rest:
                 out += self._own(qualname)
-        bindings = table.imports.get(first, [])
-        modules = [b for b in bindings if isinstance(b, _Module)]
-        for binding in bindings:
-            if isinstance(binding, _Name):
+        return out + _import_candidates(table.imports.get(first, []), rest)
+
+
+def _import_candidates(bindings: list[_Binding], rest: list[str]) -> list[CallRef]:
+    """Candidates through the imports binding one name, in source order. Each import counts
+    on its own (it may sit in one branch of a ``try`` or ``if``), but the ``import`` bindings
+    of one package come together, the longest module first: with ``import a.b`` and
+    ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
+    packages: dict[str, list[_Module]] = {}
+    for binding in bindings:
+        if isinstance(binding, _Module):
+            packages.setdefault(binding.base, []).append(binding)
+    out: list[CallRef] = []
+    for binding in bindings:
+        match binding:
+            case _Name():
                 out += _through(binding, rest)
-            elif binding is modules[0]:
-                out += _module_candidates(modules, rest)
-        return out
-
-
-def _module_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef]:
-    """Candidates through every ``import`` binding one name, the longest module first. Each
-    import counts on its own (it may sit in one branch of a ``try`` or ``if``), but with
-    ``import a.b`` and ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
-    refs = [ref for module in modules for ref in _through(module, rest)]
-    return sorted(refs, key=lambda ref: -ref.module.count("."))
+            case _Module(base) if base in packages:
+                refs = [ref for module in packages.pop(base) for ref in _through(module, rest)]
+                out += sorted(refs, key=lambda ref: -ref.module.count("."))
+    return out
 
 
 def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:
