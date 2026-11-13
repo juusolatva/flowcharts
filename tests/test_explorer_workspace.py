@@ -195,8 +195,6 @@ def test_runtime_duplicate_key_is_dropped(tmp_path):
     ws = make([a, b])
     assert [e.key for e in ws.current().entries] == ["x", "y"]
     write(b / "x.py", G)
-    # A dropped duplicate is not in the fingerprint, so another change triggers the refresh.
-    bump(a / "x.py", F + "\n")
     assert ws.refresh() is True
     snap = ws.current()
     assert [e.key for e in snap.entries] == ["x", "y"]
@@ -276,3 +274,25 @@ def test_snapshot_json_shape(tmp_path):
     ]
     assert data["entries"][0]["functions"] == [{"qualname": "f", "line": 4, "end_line": 5}]
     assert data["entries"][1]["module_name"] == "b"
+
+
+def test_failed_build_is_retried_without_further_changes(tmp_path, monkeypatch):
+    m = write(tmp_path / "m.py", F)
+    ws = make([m])
+    bump(m, F + G)
+    real = Workspace._build
+    calls = []
+
+    def flaky(self, generation, scan):
+        calls.append(generation)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return real(self, generation, scan)
+
+    monkeypatch.setattr(Workspace, "_build", flaky)
+    with pytest.raises(RuntimeError):
+        ws.refresh()
+    assert ws.current().generation == 1
+    assert ws.refresh() is True
+    assert ws.current().generation == 2
+    assert [f.qualname for f in ws.current().entries[0].functions] == ["f", "g"]

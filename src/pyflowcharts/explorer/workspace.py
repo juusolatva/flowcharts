@@ -150,17 +150,18 @@ class Workspace:
             scan = again
             if settled or self._clock() - first_seen >= self.SETTLE_CAP:
                 break
-        self._last = scan.fingerprint
-        snapshot, self._failed, _ = self._build(self._snapshot.generation + 1, scan)
+        snapshot, failed, _ = self._build(self._snapshot.generation + 1, scan)
         with self._lock:
             self._snapshot = snapshot
+        self._failed = failed
+        self._last = scan.fingerprint  # only once built, so a failed build is retried
         return True
 
     def _scan(self) -> _Scan:
         expansion = expand(self._paths, self._excludes)
         kept, duplicates = drop_duplicate_keys(expansion.inputs)
         fingerprint = (
-            tuple((str(i.path), i.key.as_posix(), _stat(i.path)) for i in kept),
+            tuple((str(i.path), i.key.as_posix(), _stat(i.path)) for i in expansion.inputs),
             tuple(expansion.warnings),
             tuple(expansion.errors),
         )
