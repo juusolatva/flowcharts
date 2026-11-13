@@ -49,7 +49,7 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - `src/pyflowcharts/cli.py`: argument parsing, `--function` selection, warnings and exit codes; `explore` hands over to the explorer.
 - `src/pyflowcharts/explorer/`: `pyflowcharts explore`, a local web app.
   - `main.py`: arguments and startup.
-  - `workspace.py`: polled once a second; when the files change (fingerprint of paths, keys and `stat()`, plus an open-probe for files that failed to read) it waits for writes to settle, re-parses the whole run and publishes an immutable, numbered snapshot.
+  - `workspace.py`: the watcher thread in `server.py` calls its `refresh()` once a second; when the files change (fingerprint of paths, keys and `stat()`, plus an open-probe for files that failed to read) it waits for writes to settle, re-parses the whole run and publishes an immutable, numbered snapshot.
   - `server.py`: 127.0.0.1 only. Host check, token cookie, security headers, routing, the event stream and the watcher thread.
   - `api.py`: pure request-to-response logic for `/api/*` (generation checks, SVG cache).
   - `render.py`: DOT to SVG with `dot`, with a timeout.
