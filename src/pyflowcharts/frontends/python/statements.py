@@ -68,8 +68,13 @@ def convert_block(block: Node | None, src: Source, options: ChartOptions) -> Blo
     return _Converter(src, options).block(block)
 
 
+def _async_prefix(node: Node) -> str:
+    """``"async "`` for an ``async def``/``for``/``with``, else ``""``."""
+    return "async " if node.children and node.children[0].type == "async" else ""
+
+
 def signature_label(func: Node, src: Source, options: ChartOptions) -> str:
-    prefix = "async " if func.children and func.children[0].type == "async" else ""
+    prefix = _async_prefix(func)
     name = _field_text(func, "name", src)
     if not options.show_parameters:
         return f"{prefix}def {name}(...)"
@@ -185,7 +190,7 @@ class _Converter:
             case "match_statement":
                 return self._match(node)
             case "for_statement":
-                prefix = "async " if node.children[0].type == "async" else ""
+                prefix = _async_prefix(node)
                 label = f"{prefix}for {self._text(node, 'left')} in {self._text(node, 'right')}"
                 return Loop(label, loc, "next", "done", self._body(node), self._else(node))
             case "while_statement":
@@ -197,7 +202,7 @@ class _Converter:
             case "try_statement":
                 return self._try(node)
             case "with_statement":
-                prefix = "async " if node.children[0].type == "async" else ""
+                prefix = _async_prefix(node)
                 clause = next(c for c in node.children if c.type == "with_clause")
                 return Step(
                     f"{prefix}with {self.src.source_text(clause)}", loc, body=self._body(node)
