@@ -3,6 +3,7 @@ import { opensSearch } from "../lib/keys.mjs";
 import { formatHash, parseHash } from "../lib/routing.mjs";
 import { fallbackFunction, nodeForLine } from "../lib/sourcemap.mjs";
 import { splitCallgraphId } from "../lib/svgids.mjs";
+import { chartState } from "../lib/viewstate.mjs";
 import { createApi, isIgnorable } from "./api.mjs";
 import { mountSvg, showNotice } from "./chart.mjs";
 import { link } from "./dom.mjs";
@@ -117,11 +118,17 @@ async function showCallgraph(mine) {
   });
 }
 
+function showFileNotice(entry) {
+  source.clear("");
+  notice(`⚠ ${entry.error ?? "No problems in this file."}`);
+}
+
 async function showChart(mine, entry) {
   const q = route.qualname;
-  const skipped = entry?.skipped.find((s) => s.qualname === q);
-  const exists = entry && (skipped || entry.functions.some((f) => f.qualname === q) || (q === MODULE && entry.has_module));
-  if (!exists) return gone();
+  const view = chartState(entry, q, MODULE);
+  if (view === "gone") return gone();
+  if (view === "error") return showFileNotice(entry);
+  const skipped = entry.skipped.find((s) => s.qualname === q);
   const sourceUrl = `/api/source/${entry.doc}`;
   if (skipped) {
     const text = await api.text(sourceUrl);
@@ -162,10 +169,8 @@ async function show() {
   try {
     if (route.view === "callgraph") await showCallgraph(mine);
     else if (route.view === "chart") await showChart(mine, entry);
-    else if (entry) {
-      source.clear("");
-      notice(`⚠ ${entry.error ?? "No problems in this file."}`);
-    } else gone();
+    else if (entry) showFileNotice(entry);
+    else gone();
   } catch (error) {
     if (mine !== token || isIgnorable(error)) return;
     notice(`Could not load this view: ${error.message}`);
