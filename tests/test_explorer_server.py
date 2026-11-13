@@ -258,6 +258,10 @@ def test_shutdown_with_several_open_streams_is_prompt(running_server):
         started = time.monotonic()
         shutdown(running_server.server, running_server.server.stop)
         assert time.monotonic() - started < 2.0
+        for sock in socks:  # every stream must end, not just shutdown() return
+            sock.settimeout(2)
+            while sock.recv(4096):
+                pass
     finally:
         for sock in socks:
             sock.close()
