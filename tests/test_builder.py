@@ -7,6 +7,7 @@ from pyflowcharts.cfg.model import (
     Block,
     Branch,
     Break,
+    CallSite,
     Continue,
     Handler,
     Loop,
@@ -14,7 +15,7 @@ from pyflowcharts.cfg.model import (
     Terminal,
     Try,
 )
-from pyflowcharts.ir import ChartOptions, FunctionChart, NodeKind, SourceLocation
+from pyflowcharts.ir import Call, CallRef, ChartOptions, FunctionChart, NodeKind, SourceLocation
 
 LOC = SourceLocation(1, 0, 1, 10)
 
@@ -24,7 +25,7 @@ def at(line: int, col: int = 4) -> SourceLocation:
 
 
 def chart(body: Block, **opts) -> FunctionChart:
-    nodes, edges = build_chart("f", "def f()", LOC, body, ChartOptions(**opts))
+    nodes, edges, calls = build_chart("f", "def f()", LOC, body, ChartOptions(**opts))
     return FunctionChart(
         qualname="f",
         name="f",
@@ -34,6 +35,7 @@ def chart(body: Block, **opts) -> FunctionChart:
         location=LOC,
         nodes=nodes,
         edges=edges,
+        calls=calls,
     )
 
 
@@ -390,3 +392,74 @@ def test_stray_break_inside_try_finally_reports_the_break_line():
     with pytest.raises(StrayLoopTransfer) as e:
         chart(body)
     assert (e.value.kind, e.value.loc) == ("break", at(3))
+
+
+S = CallSite
+
+
+def calls_of(body: Block, **opts) -> list[tuple[str, str]]:
+    nodes, _, calls = build_chart("f", "def f()", LOC, body, ChartOptions(**opts))
+    label = {n.id: n.label for n in nodes}
+    return [(label[c.node], c.text) for c in calls]
+
+
+def test_step_calls_land_on_its_node():
+    body = (Step("x = g(h())", at(2), calls=(S("g", ()), S("h", ()))),)
+    assert calls_of(body) == [("x = g(h())", "g"), ("x = g(h())", "h")]
+
+
+def test_branch_loop_terminal_handler_carry_calls():
+    body = (
+        Branch("if ok()", at(2), (Arm("True", ()),), "False", calls=(S("ok", ()),)),
+        Loop("for r in rows()", at(3), "next", "done", (), (), calls=(S("rows", ()),)),
+        Try(
+            at(4),
+            (Step("a()", at(5), calls=(S("a", ()),)),),
+            (Handler("except E(e())", at(6), (), calls=(S("e", ()),)),),
+            (),
+            None,
+        ),
+        Terminal(NodeKind.RETURN, "return z()", at(7), calls=(S("z", ()),)),
+    )
+    assert calls_of(body) == [
+        ("if ok()", "ok"),
+        ("for r in rows()", "rows"),
+        ("a()", "a"),
+        ("except E(e())", "e"),
+        ("return z()", "z"),
+    ]
+
+
+def test_finally_copies_record_calls_on_each_copy():
+    # the try body can fall through (normal `finally`), break (`finally (break)`), and raise
+    # (`finally (exception)`, because the try has no handlers)
+    cleanup = Step("cleanup()", at(6), calls=(S("cleanup", ()),))
+    body = (
+        Loop(
+            "for x in xs",
+            at(2),
+            "next",
+            "done",
+            (
+                Try(
+                    at(3),
+                    (Branch("if c", at(4), (Arm("True", (Break(at(5)),)),), "False"),),
+                    (),
+                    (),
+                    (cleanup,),
+                ),
+            ),
+            (),
+        ),
+    )
+    nodes, _, calls = build_chart("f", "def f()", LOC, body, ChartOptions())
+    ids = [c.node for c in calls if c.text == "cleanup"]
+    assert len(ids) == len(set(ids)) == 3
+    assert all(any(n.id == i for n in nodes) for i in ids)
+
+
+def test_candidates_are_copied_into_calls():
+    ref = CallRef("m", "g")
+    body = (Step("g()", at(2), calls=(S("g", (ref,)),)),)
+    _, _, calls = build_chart("f", "def f()", LOC, body, ChartOptions())
+    assert calls == [Call("f#L2C4", "g", [ref], None)]

@@ -8,9 +8,17 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pyflowcharts.ir import NodeKind, SourceLocation
+from pyflowcharts.ir import CallRef, NodeKind, SourceLocation
 
 type Block = tuple[Stmt, ...]
+
+
+@dataclass(frozen=True)
+class CallSite:
+    """A call written in a statement: the callee's source text and where it may go."""
+
+    text: str
+    candidates: tuple[CallRef, ...]
 
 
 @dataclass(frozen=True)
@@ -25,6 +33,7 @@ class Step:
     loc: SourceLocation
     body: Block = ()
     hidden: bool = False
+    calls: tuple[CallSite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,6 +51,7 @@ class Branch:
     loc: SourceLocation
     arms: tuple[Arm, ...]
     default: str | None
+    calls: tuple[CallSite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,7 @@ class Loop:
     exit: str | None
     body: Block
     orelse: Block
+    calls: tuple[CallSite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -61,6 +72,7 @@ class Handler:
     label: str
     loc: SourceLocation
     body: Block
+    calls: tuple[CallSite, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -81,6 +93,7 @@ class Terminal:
     kind: NodeKind
     label: str
     loc: SourceLocation
+    calls: tuple[CallSite, ...] = ()
 
 
 @dataclass(frozen=True)

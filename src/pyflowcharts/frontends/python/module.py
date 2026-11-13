@@ -54,14 +54,14 @@ def module_chart(root: Node, src: Source, path: str, options: ChartOptions) -> C
     """The module's top-level statements as a chart. Raises ``StrayLoopTransfer`` for a
     top-level ``break``/``continue``."""
     location = _location(root, src)
-    nodes, edges = build_chart(
+    nodes, edges, calls = build_chart(
         MODULE_QUALNAME,
         f"module {PurePath(path).stem}",
         location,
         convert_statements(root, src, options),
         options,
     )
-    return Chart(qualname=MODULE_QUALNAME, location=location, nodes=nodes, edges=edges)
+    return Chart(qualname=MODULE_QUALNAME, location=location, nodes=nodes, edges=edges, calls=calls)
 
 
 def _location(root: Node, src: Source) -> SourceLocation:
