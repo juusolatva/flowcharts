@@ -5,10 +5,11 @@ from __future__ import annotations
 from pyflowcharts.cfg.builder import StrayLoopTransfer, build_chart
 from pyflowcharts.frontends.base import Diagnostic, ParseResult, SourceError
 from pyflowcharts.frontends.python.discovery import Found, find_functions, parameters, returns
+from pyflowcharts.frontends.python.module import STRAY, UNSUPPORTED, does_work, module_chart
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.frontends.python.statements import convert_body, signature_label
-from pyflowcharts.frontends.python.validate import validate
-from pyflowcharts.ir import ChartOptions, Document, FunctionChart
+from pyflowcharts.frontends.python.validate import first_error_line, validate
+from pyflowcharts.ir import MODULE_QUALNAME, Chart, ChartOptions, Document, FunctionChart
 
 TOO_DEEP = "code is too deeply nested to chart"
 
@@ -32,12 +33,15 @@ class PythonFrontend:
                 except StrayLoopTransfer as e:
                     message = f"syntax error in '{func.qualname}'; function skipped"
                     warnings.append(Diagnostic(path, e.loc.line, message, func.qualname))
+            module = None
+            if options.show_module and validation.outside is None:
+                module = _module(src, path, options, warnings)
         except (RecursionError, MemoryError) as e:
             raise SourceError(path, TOO_DEEP) from e
         warnings.sort(key=lambda w: w.line or 0)
         if validation.outside is not None:
             warnings.insert(0, validation.outside)
-        document = Document(source=path, language=self.language, functions=charts)
+        document = Document(source=path, language=self.language, functions=charts, module=module)
         return ParseResult(document, tuple(warnings))
 
 
@@ -59,3 +63,21 @@ def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
         nodes=nodes,
         edges=edges,
     )
+
+
+def _module(
+    src: Source, path: str, options: ChartOptions, warnings: list[Diagnostic]
+) -> Chart | None:
+    """The module chart, or ``None`` (appending a warning when it had to be skipped). The
+    tree-sitter error check comes first: a misread statement could look like work or hide it."""
+    root = src.tree.root_node
+    if (line := first_error_line(root)) is not None:
+        warnings.append(Diagnostic(path, line, UNSUPPORTED, MODULE_QUALNAME))
+        return None
+    if not does_work(root):
+        return None
+    try:
+        return module_chart(root, src, path, options)
+    except StrayLoopTransfer as e:
+        warnings.append(Diagnostic(path, e.loc.line, STRAY, MODULE_QUALNAME))
+        return None
