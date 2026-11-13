@@ -1,9 +1,15 @@
 import os
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
-from pyflowcharts.inputs import collision_error, expand
+from pyflowcharts.inputs import (
+    EXPLORE_HINT,
+    Input,
+    collision_error,
+    drop_duplicate_keys,
+    expand,
+)
 
 needs_non_root = pytest.mark.skipif(
     not hasattr(os, "geteuid") or os.geteuid() == 0,
@@ -176,3 +182,28 @@ def test_reserved_key_collision(tmp_path):
     path = tmp_path / "callgraph.py"
     assert msg == f"error: output name collision: {path} maps to 'callgraph'; it is reserved"
     assert collision_error(expand([tmp_path / "sub"], []).inputs) is None  # no reservation given
+
+
+def test_collision_hint_is_configurable(tmp_path):
+    a = Input(tmp_path / "a/x.py", PurePosixPath("x"), True)
+    b = Input(tmp_path / "b/x.py", PurePosixPath("x"), True)
+    assert collision_error([a, b], hint=EXPLORE_HINT).endswith(EXPLORE_HINT)
+
+
+def test_prefix_keys_allowed_when_requested(tmp_path):
+    short = Input(tmp_path / "mod.py", PurePosixPath("mod"), True)
+    long = Input(tmp_path / "mod/x.py", PurePosixPath("mod/x"), False)
+    assert collision_error([short, long], allow_prefixes=True) is None
+    assert collision_error([short, long]) is not None
+
+
+def test_drop_duplicate_keys_keeps_first(tmp_path):
+    a = Input(tmp_path / "a/x.py", PurePosixPath("x"), False)
+    b = Input(tmp_path / "b/x.py", PurePosixPath("x"), False)
+    kept, messages = drop_duplicate_keys([a, b])
+    assert kept == [a]
+    expected = (
+        f"error: output name collision: {a.path} and {b.path} both map to 'x'; "
+        f"{EXPLORE_HINT}; showing only {a.path}"
+    )
+    assert messages == [expected]

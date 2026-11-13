@@ -16,6 +16,7 @@ from pyflowcharts.frontends import supported_extensions
 
 _SKIPPED_DIRS = frozenset({"__pycache__"})
 _HINT = "run them separately with different --output directories"
+EXPLORE_HINT = "explore them separately or explore their parent directory"
 
 
 @dataclass(frozen=True)
@@ -115,10 +116,17 @@ def _dedupe(found: list[Input]) -> list[Input]:
     return list(by_file.values())
 
 
-def collision_error(inputs: list[Input], reserved: Mapping[str, str] | None = None) -> str | None:
+def collision_error(
+    inputs: list[Input],
+    reserved: Mapping[str, str] | None = None,
+    *,
+    hint: str = _HINT,
+    allow_prefixes: bool = False,
+) -> str | None:
     """The error for two inputs whose outputs would overlap, or ``None``: a key in
     ``reserved`` (mapped to the message tail explaining why), the same key, or one key whose
-    segments are a proper prefix of another's (``OUTDIR/K/`` is shared)."""
+    segments are a proper prefix of another's (``OUTDIR/K/`` is shared; skipped when
+    ``allow_prefixes``). ``hint`` ends the same-key and prefix messages."""
     for item in inputs:
         if (reason := (reserved or {}).get(item.key.as_posix())) is not None:
             return f"error: output name collision: {item.path} maps to '{item.key}'; {reason}"
@@ -129,16 +137,33 @@ def collision_error(inputs: list[Input], reserved: Mapping[str, str] | None = No
             first = by_key[parts]
             return (
                 f"error: output name collision: {first.path} and {item.path} "
-                f"both map to '{item.key}'; {_HINT}"
+                f"both map to '{item.key}'; {hint}"
             )
         by_key[parts] = item
-    for item in inputs:
+    for item in () if allow_prefixes else inputs:
         parts = item.key.parts
         for n in range(1, len(parts)):
             if (short := by_key.get(parts[:n])) is not None:
                 return (
                     f"error: output name collision: {short.path} maps to '{short.key}' and "
                     f"{item.path} to '{item.key}', which would share the directory "
-                    f"'{short.key}'; {_HINT}"
+                    f"'{short.key}'; {hint}"
                 )
     return None
+
+
+def drop_duplicate_keys(inputs: list[Input]) -> tuple[list[Input], list[str]]:
+    """Keep the first input per output key; each dropped one yields an error message."""
+    first: dict[PurePosixPath, Input] = {}
+    kept: list[Input] = []
+    messages: list[str] = []
+    for item in inputs:
+        if (other := first.get(item.key)) is None:
+            first[item.key] = item
+            kept.append(item)
+        else:
+            messages.append(
+                f"error: output name collision: {other.path} and {item.path} "
+                f"both map to '{item.key}'; {EXPLORE_HINT}; showing only {other.path}"
+            )
+    return kept, messages
