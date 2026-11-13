@@ -1,16 +1,18 @@
-"""Command-line interface: ``pyflowcharts FILE [FILE ...] [options]``."""
+"""Command-line interface: ``pyflowcharts PATH [PATH ...] [options]``."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 from collections.abc import Sequence
-from pathlib import Path, PurePosixPath
+from dataclasses import replace
+from pathlib import Path
 
 from pyflowcharts import __version__
 from pyflowcharts.frontends import SourceError, frontend_for_path
 from pyflowcharts.frontends.base import ParseResult
-from pyflowcharts.ir import ChartOptions, Document
+from pyflowcharts.inputs import Input, collision_error, expand
+from pyflowcharts.ir import MODULE_QUALNAME, ChartOptions
 from pyflowcharts.output import Writer
 
 FORMATS = ("json", "dot", "svg", "png", "mermaid")
@@ -29,44 +31,44 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_parameters=not args.no_parameters,
         show_returns=not args.no_returns,
         max_label_length=args.max_label,
+        show_module=not args.no_module,
     )
-    files = _unique_paths(args.files)
-    if (collision := _stem_collision(files)) is not None:
-        first, second = collision
-        print(
-            f"error: output name collision: {first} and {second} both map to '{first.stem}'; "
-            "run them separately with different --output directories",
-            file=sys.stderr,
-        )
+    expansion = expand(args.paths, args.exclude)
+    if (collision := collision_error(expansion.inputs)) is not None:
+        print(collision, file=sys.stderr)
         return EXIT_ERROR
 
     status = EXIT_OK
-    results: list[tuple[Path, ParseResult]] = []
-    for path in files:
+    for message in expansion.warnings + expansion.errors:
+        print(message, file=sys.stderr)
+    if expansion.errors:
+        status = EXIT_ERROR
+
+    results: list[tuple[Input, ParseResult]] = []
+    for item in expansion.inputs:
         try:
-            results.append((path, _parse_file(path, options)))
+            results.append((item, _parse_file(item.path, options)))
         except SourceError as err:
             print(err, file=sys.stderr)
             status = EXIT_ERROR
 
+    # Decided on the full result, so a file that only lacks the requested functions is quiet.
+    empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
     if args.function:
         results = _select(results, args.function)
         if results is None:
             return EXIT_ERROR
 
-    documents: list[tuple[Path, Document]] = []
-    for path, result in results:
+    for item, result in results:
         for warning in result.warnings:
             print(warning, file=sys.stderr)
             status = EXIT_ERROR
-        skipped_any = any(w.qualname is not None for w in result.warnings)
-        if not result.document.functions and not skipped_any:
-            print(f"warning: {path}: no functions found", file=sys.stderr)
-        documents.append((path, result.document))
+        if item.path in empty:
+            print(f"warning: {item.path}: nothing to chart", file=sys.stderr)
 
     writer = Writer(args.output, formats)
-    for path, doc in documents:
-        writer.write(doc, PurePosixPath(path.stem))
+    for item, result in results:
+        writer.write(result.document, item.key)
 
     if writer.write_failed:
         status = EXIT_ERROR
@@ -75,13 +77,22 @@ def main(argv: Sequence[str] | None = None) -> int:
     return status
 
 
+def _nothing_to_chart(result: ParseResult) -> bool:
+    doc = result.document
+    return not doc.functions and doc.module is None and not result.warnings
+
+
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pyflowcharts",
         description="Generate a control-flow flowchart for every function in Python files.",
-        epilog="Put input files before options that take several values (-f, --function).",
+        epilog=(
+            "Put input paths before options that take several values (-f, --function, --exclude)."
+        ),
     )
-    parser.add_argument("files", nargs="+", type=Path, metavar="FILE", help="source files")
+    parser.add_argument(
+        "paths", nargs="+", type=Path, metavar="PATH", help="source files or directories"
+    )
     parser.add_argument(
         "-o",
         "--output",
@@ -106,12 +117,24 @@ def _parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--no-returns", action="store_true", help="hide returned values in return nodes"
     )
+    parser.add_argument("--no-module", action="store_true", help="never chart module-level code")
     parser.add_argument(
         "--function",
         nargs="+",
         action="extend",
         metavar="QUALNAME",
         help="only chart these functions (e.g. 'load' or 'Inventory.find'); repeatable",
+    )
+    parser.add_argument(
+        "--exclude",
+        nargs="+",
+        action="extend",
+        default=[],
+        type=_exclude_pattern,
+        metavar="GLOB",
+        help="skip matching files and directories when walking a directory; a pattern "
+        "without '/' matches names, one with '/' the relative path, and a trailing '/' "
+        "matches directories only; repeatable",
     )
     parser.add_argument(
         "--max-label",
@@ -124,6 +147,12 @@ def _parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _exclude_pattern(text: str) -> str:
+    if text.rstrip("/") == "":
+        raise argparse.ArgumentTypeError(f"must name a file or directory, got {text!r}")
+    return text
+
+
 def _positive_int(text: str) -> int:
     try:
         value = int(text)
@@ -134,38 +163,21 @@ def _positive_int(text: str) -> int:
     return value
 
 
-def _unique_paths(paths: list[Path]) -> list[Path]:
-    """Drop repeated mentions of the same file, keeping the first spelling."""
-    seen: set[Path] = set()
-    unique = []
-    for path in paths:
-        key = path.resolve()
-        if key not in seen:
-            seen.add(key)
-            unique.append(path)
-    return unique
-
-
-def _stem_collision(paths: list[Path]) -> tuple[Path, Path] | None:
-    by_stem: dict[str, Path] = {}
-    for path in paths:
-        if path.stem in by_stem:
-            return by_stem[path.stem], path
-        by_stem[path.stem] = path
-    return None
-
-
 def _select(
-    results: list[tuple[Path, ParseResult]], names: list[str]
-) -> list[tuple[Path, ParseResult]] | None:
+    results: list[tuple[Input, ParseResult]], names: list[str]
+) -> list[tuple[Input, ParseResult]] | None:
     """Keep only the charts named by ``--function`` (and the warnings that concern them).
 
-    Skipped functions count as known names. Returns ``None`` after reporting unknown ones.
+    ``<module>`` names module charts. Skipped charts count as known names. Returns ``None``
+    after reporting unknown ones.
     """
     available: list[str] = []
     for _, result in results:
         available += [chart.qualname for chart in result.document.functions]
+        if result.document.module is not None:
+            available.append(MODULE_QUALNAME)
         available += [f"{w.qualname} (skipped)" for w in result.warnings if w.qualname]
+    available = list(dict.fromkeys(available))
     known = {name.removesuffix(" (skipped)") for name in available}
     unknown = [name for name in dict.fromkeys(names) if name not in known]
     if unknown:
@@ -175,11 +187,15 @@ def _select(
         return None
     wanted = set(names)
     selected = []
-    for path, result in results:
-        functions = [c for c in result.document.functions if c.qualname in wanted]
+    for item, result in results:
+        doc = result.document
+        document = replace(
+            doc,
+            functions=[c for c in doc.functions if c.qualname in wanted],
+            module=doc.module if MODULE_QUALNAME in wanted else None,
+        )
         warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
-        document = Document(result.document.source, result.document.language, functions)
-        selected.append((path, ParseResult(document, warnings)))
+        selected.append((item, ParseResult(document, warnings)))
     return selected
 
 
