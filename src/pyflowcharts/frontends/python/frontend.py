@@ -6,7 +6,7 @@ from pathlib import PurePath, PurePosixPath
 
 from pyflowcharts.cfg.builder import StrayLoopTransfer, build_chart
 from pyflowcharts.frontends.base import Diagnostic, ParseResult, SourceError
-from pyflowcharts.frontends.python.calls import module_info
+from pyflowcharts.frontends.python.calls import Resolver, module_info
 from pyflowcharts.frontends.python.discovery import Found, find_functions, parameters, returns
 from pyflowcharts.frontends.python.module import STRAY, UNSUPPORTED, does_work, module_chart
 from pyflowcharts.frontends.python.source import Source
@@ -32,6 +32,7 @@ class PythonFrontend:
         src = Source.from_bytes(source, path)
         try:
             functions = find_functions(src.tree.root_node)
+            resolver = Resolver(src.tree.root_node, functions, info, src)
             validation = validate(src, functions, path)
             warnings = list(validation.skipped.values())
             charts = []
@@ -39,13 +40,13 @@ class PythonFrontend:
                 if func.qualname in validation.skipped:
                     continue
                 try:
-                    charts.append(_chart(func, src, options))
+                    charts.append(_chart(func, src, options, resolver))
                 except StrayLoopTransfer as e:
                     message = f"syntax error in '{func.qualname}'; function skipped"
                     warnings.append(Diagnostic(path, e.loc.line, message, func.qualname))
             module = None
             if options.show_module and validation.outside is None:
-                module = _module(src, path, options, warnings)
+                module = _module(src, path, options, warnings, resolver)
         except (RecursionError, MemoryError) as e:
             raise SourceError(path, TOO_DEEP) from e
         warnings.sort(key=lambda w: w.line or 0)
@@ -61,12 +62,12 @@ class PythonFrontend:
         return ParseResult(document, tuple(warnings))
 
 
-def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
+def _chart(func: Found, src: Source, options: ChartOptions, resolver: Resolver) -> FunctionChart:
     nodes, edges, calls = build_chart(
         func.qualname,
         signature_label(func.node, src, options),
         src.location(func.node),
-        convert_body(func.node, src, options),
+        convert_body(func.node, src, options, resolver, func),
         options,
     )
     return FunctionChart(
@@ -83,7 +84,11 @@ def _chart(func: Found, src: Source, options: ChartOptions) -> FunctionChart:
 
 
 def _module(
-    src: Source, path: str, options: ChartOptions, warnings: list[Diagnostic]
+    src: Source,
+    path: str,
+    options: ChartOptions,
+    warnings: list[Diagnostic],
+    resolver: Resolver,
 ) -> Chart | None:
     """The module chart, or ``None`` (appending a warning when it had to be skipped). A
     tree-sitter error only matters when a chart would be drawn; a top-level ``ERROR`` node
@@ -95,7 +100,7 @@ def _module(
         warnings.append(Diagnostic(path, line, UNSUPPORTED, MODULE_QUALNAME))
         return None
     try:
-        return module_chart(root, src, path, options)
+        return module_chart(root, src, path, options, resolver)
     except StrayLoopTransfer as e:
         warnings.append(Diagnostic(path, e.loc.line, STRAY, MODULE_QUALNAME))
         return None
