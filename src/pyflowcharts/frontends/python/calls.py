@@ -275,15 +275,21 @@ def _package_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef
 
 
 def _always_runs(stmt: Node) -> bool:
-    """Whether ``stmt`` sits directly in a module's or function's body."""
-    parent = stmt.parent
-    if parent is None or parent.type == "module":
-        return True
-    return (
-        parent.type == "block"
-        and parent.parent is not None
-        and (parent.parent.type == "function_definition")
-    )
+    """Whether ``stmt`` always runs once its module's or function's body does: it sits in that
+    body directly or through ``with`` bodies and ``finally`` blocks only."""
+    child, node = stmt, stmt.parent
+    while node is not None:
+        match node.type:
+            case "module" | "function_definition":
+                return True
+            case "block" | "with_statement" | "finally_clause":
+                pass
+            case "try_statement" if child.type == "finally_clause":
+                pass
+            case _:
+                return False
+        child, node = node, node.parent
+    return True
 
 
 def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:

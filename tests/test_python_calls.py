@@ -263,6 +263,20 @@ def f():
         # makes its modules certain, so shorter fallbacks through them are dropped
         ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", []),
         ("def f():\n    import a.b\n    import a.c\n    a.c()\n", "f", "a.c", []),
+        # with bodies and finally blocks always run
+        ("import a.b\nwith x:\n    import a.b.c\ndef f():\n    a.b.c()\n", "f", "a.b.c", []),
+        (
+            "import a.b\ntry:\n    pass\nfinally:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [],
+        ),
+        (
+            "import a.b\ntry:\n    pass\nelse:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
         (
             "try:\n    import a.b\nexcept ImportError:\n    import a.c\ndef f():\n    a.c.f()\n",
             "f",
