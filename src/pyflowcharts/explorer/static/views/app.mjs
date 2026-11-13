@@ -175,6 +175,7 @@ async function show() {
     else gone();
   } catch (error) {
     if (mine !== token || isIgnorable(error)) return;
+    source.clear("");
     notice(`Could not load this view: ${error.message}`);
   }
 }
