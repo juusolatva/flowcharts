@@ -59,7 +59,7 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 
 **Code style**
 - Python ≥ 3.12, full type hints, and `match` statements for AST dispatch.
-- Stay within the standard library plus `graphviz`, `tree-sitter` and `tree-sitter-python`. Ask before adding a runtime dependency. Pin new dependency versions released at least two weeks earlier; `tree-sitter` 0.26.0 is excluded (it corrupts node positions and segfaults).
+- Stay within the standard library plus `graphviz`, `tree-sitter` and `tree-sitter-python`. Ask before adding a runtime dependency. Pin new dependency versions released at least two weeks earlier; `tree-sitter` 0.26.0 is excluded (it corrupts node positions and segfaults). Dependabot proposes dependency and action updates weekly with the same two-week cooldown (`.github/dependabot.yml`); CI must pass before one is merged.
 - Keep modules focused. If a file grows past roughly 300 lines, propose a split.
 
 **Testing**
