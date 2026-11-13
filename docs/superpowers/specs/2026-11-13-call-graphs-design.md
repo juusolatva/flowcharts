@@ -105,7 +105,7 @@ A call belongs to the chart node of the statement it is written in:
 
 ## Resolution rules (Python frontend)
 
-The resolver lives in `frontends/python/calls.py`. It is static and best-effort and never raises: anything not covered gives `candidates = []`. "Own" means the file's `module_name`. Candidates are deduplicated, keeping the first occurrence.
+The resolver lives in `frontends/python/calls.py`. It is static and best-effort and never raises: anything not covered gives `candidates = []`. "Own" means the file's `module_name`. Candidates are deduplicated, keeping the first occurrence. When the module name is empty (an explicitly named `__init__.py`), no candidate in the own module is produced, since `""` is not a module name; import candidates are unaffected.
 
 ### Scopes and bindings
 
@@ -140,7 +140,7 @@ Split the callee chain `a.b.….m` at its first part `a`:
   - a `class` with qualname `C` → `(own, C.rest)`, where `rest` is the chain after `a` (`C.m`, `C.Inner.m`);
   - a `def` → nothing;
   - import bindings, each in source order:
-    - *module* `x` from `import x.y.z`: the longest recorded module prefix matching the chain (`x.y.z`, `x.y`, then `x`) wins; the rest is the qualname: `x.y.f()` → `(x.y, f)`; `x.f()` → `(x, f)`.
+    - *module* `x` from `import x.y.z`: the longest recorded module prefix that is a proper prefix of the chain (`x.y.z`, `x.y`, then `x`) wins; the rest is the qualname: `x.y.f()` → `(x.y, f)`; `x.f()` → `(x, f)`; `x.y()` → nothing (a module is not called).
     - *module* `x.y` from `import x.y as z`: `z.f()` → `(x.y, f)`; `z.C.m()` → `(x.y, C.m)`.
     - *name* `(m, x)` from `from m import x [as a]`: `x` may be a submodule or a name in `m`, so `a.rest(…)` gives `(m.x, rest)` then `(m, x.rest)`, using the original name `x`, not the alias. (`from . import x` in package `p`: `(p.x, rest)` then `(p, x.rest)`.)
 - A chain that does not start with a plain identifier (calls on call results, subscripts, literals) gives nothing.

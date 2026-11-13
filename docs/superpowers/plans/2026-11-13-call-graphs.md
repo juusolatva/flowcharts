@@ -38,7 +38,7 @@
 
 **Files:**
 - Modify: `src/pyflowcharts/ir.py`, `src/pyflowcharts/serialize.py`
-- Modify tests: `tests/test_serialize.py`, `tests/test_frontend.py` (`test_document_metadata`), `tests/test_python_frontend.py` (schema version)
+- Modify tests: `tests/test_serialize.py`, `tests/test_frontend.py` (`test_document_metadata`), `tests/test_python_frontend.py` (schema version), `tests/test_cli.py:267` (`test_function_selects_module` asserts `schema_version == 2`)
 
 **Interfaces:**
 - Produces (`ir.py`):
@@ -72,6 +72,7 @@ def test_round_trip_with_calls(doc):
         "candidates": [{"module": "m", "qualname": "g"}, {"module": "m", "qualname": "g.__init__"}],
         "target": {"module": "m", "qualname": "g"}}
 
+# replaces test_reads_version_1
 @pytest.mark.parametrize("version", [1, 2])
 def test_reads_older_versions(doc, version):
     data = json.loads(to_json(doc))
@@ -83,9 +84,20 @@ def test_reads_older_versions(doc, version):
         del data["module"]
     old = from_json(json.dumps(data))
     assert (old.schema_version, old.module_name, old.functions[0].calls) == (version, "", [])
+
+def test_reads_version_2_module_chart_without_calls(doc):
+    f = doc.functions[0]
+    doc.module = Chart(qualname=MODULE_QUALNAME, location=f.location, nodes=f.nodes, edges=f.edges)
+    data = json.loads(to_json(doc))
+    data["schema_version"] = 2
+    del data["module_name"]
+    del data["module"]["calls"]
+    for chart in data["functions"]:
+        del chart["calls"]
+    assert from_json(json.dumps(data)).module.calls == []
 ```
 
-  Change the rejection test's `match` to `r"expected 1, 2 or 3"`. In `test_frontend.py` and `test_python_frontend.py`, change the expected schema version to `3`.
+  Change the rejection test's `match` to `r"expected 1, 2 or 3"`. In `test_round_trip_with_module`, the module chart's key set becomes `{"qualname", "location", "nodes", "edges", "calls"}`. In `test_frontend.py`, `test_python_frontend.py` and `test_cli.py:267`, change the expected schema version to `3`.
 
 - [ ] **Step 2: Run** `uv run pytest tests/test_serialize.py -v`. Expected: FAIL (`Call` / `CallRef` import errors).
 - [ ] **Step 3: Implement** the Interfaces. In `serialize.py`:
@@ -137,12 +149,14 @@ def test_branch_loop_terminal_handler_carry_calls():
                               ("except E(e())", "e"), ("return z()", "z")]
 
 def test_finally_copies_record_calls_on_each_copy():
+    # the try body can fall through (normal `finally`), break (`finally (break)`), and raise
+    # (`finally (exception)`, because the try has no handlers)
     body = (Loop("for x in xs", at(2), "next", "done",
-                 (Try(at(3), (Step("a()", at(4)), Break(at(5))), (), (),
-                      (Step("cleanup()", at(6), calls=(S("cleanup", ()),)),)),), ()),)
+                 (Try(at(3), (Branch("if c", at(4), (Arm("True", (Break(at(5)),)),), "False"),),
+                      (), (), (Step("cleanup()", at(6), calls=(S("cleanup", ()),)),)),), ()),)
     nodes, _, calls = build_chart("f", "def f()", LOC, body, ChartOptions())
     ids = [c.node for c in calls if c.text == "cleanup"]
-    assert len(ids) == len(set(ids)) == 2  # normal path + `finally (break)` copy
+    assert len(ids) == len(set(ids)) == 3
     assert all(any(n.id == i for n in nodes) for i in ids)
 
 def test_candidates_are_copied_into_calls():
@@ -152,7 +166,7 @@ def test_candidates_are_copied_into_calls():
     assert calls == [Call("f#L2C4", "g", [ref], None)]
 ```
 
-  Adjust `test_finally_copies_record_calls_on_each_copy` to the actual number of finally copies if the builder draws a different set for this body. The assertion that matters is "one call per copy node, all ids distinct and existing".
+  If the builder draws a different set of copies for this body than the comment says, adjust the expected count to the copies actually drawn (check the `finally …` labels in `nodes`). The assertion that matters is "one call per copy node, all ids distinct and existing".
 
 - [ ] **Step 2: Run** `uv run pytest tests/test_builder.py -v`. Expected: FAIL (`CallSite` missing, unexpected `calls` keyword).
 - [ ] **Step 3: Implement** the Interfaces.
@@ -249,7 +263,8 @@ def test_json_has_module_name_from_walk(tmp_path):
   - Each site's `text` is `src.source_text(call.child_by_field_name("function"))`.
 - `statements._Converter` takes an optional `resolver: Resolver | None` and `scope: Found | None`. Where it builds a `Step`, `Branch`, `Loop`, `Handler` or `Terminal`, it passes `calls=resolver.sites(call_roots(node), scope)`.
   - With no resolver, it passes `()`, so `tests/test_python_statements.py` keeps working.
-  - The `decorated_definition` case passes the wrapper's roots to the `def`/`class` `Step`.
+  - The `decorated_definition` case passes the wrapper's roots to the `def`/`class` `Step`. Its `loc` stays the definition's location, as today, so node IDs do not shift.
+  - `_if_chain` builds the `Branch` of each `elif_clause` and passes that clause's `calls=` too.
   - `convert_body` and `convert_statements` take `resolver` and `scope` keywords, defaulting to `None`.
 - `PythonFrontend.parse` builds one `Resolver` per file after `find_functions` and passes it, with the chart's `Found` (or `None` for the module chart), into `convert_body` and `module_chart`.
 
@@ -342,8 +357,9 @@ def test_lambdas_and_comprehensions_belong_to_the_statement():
                                  ("k = lambda: z()", "z")]
 
 def test_calls_ignore_label_options():
-    src = "def f(a=d()):\n    return g()\n"
-    assert owned(fn(doc_of(src, show_returns=False), "f")) == [("return", "g")]
+    src = "def f():\n    def inner(a=d()): pass\n    return g()\n"
+    d = doc_of(src, show_returns=False, show_parameters=False)
+    assert owned(fn(d, "f")) == [("def inner(...)", "d"), ("return", "g")]
 
 def test_hidden_assignment_records_calls_only_when_shown():
     src = "def f():\n    x[g()] = 1\n    h()\n"
@@ -383,6 +399,10 @@ def test_same_function_nested_gives_two_calls():  # Review Focus 3
   - a map from each function to the class whose body directly contains it, for `self.m` / `cls.m`. Class qualnames are built like discovery's: the enclosing prefix plus the class name.
   - the scope chain for `scope=Found` is `Found`, `Found.enclosing`, …, then the module. For `scope=None` it is the module only.
   - candidates deduplicated, keeping the first occurrence.
+  - when `info.name == ""` (an explicitly named `__init__.py`), no candidate in the own module is produced: `""` is not a module name. Imports still give their candidates.
+  - a module prefix matches only when it is a proper prefix of the call chain, so `import x.y; x.y()` gives nothing, never `CallRef("x.y", "")`.
+  - the function-to-class map is reset at every `function_definition`, so a function nested inside a method gets no `self`/`cls` resolution. It is kept across compound blocks (`if`/`try`/`with`) and `decorated_definition` wrappers inside a class body.
+  - walking skipped functions can meet `ERROR`/`MISSING` nodes. Every `child_by_field_name` result is checked for `None`. `import_from_statement` names are read from its `name` fields (each a `dotted_name` or `aliased_import`), not from every `dotted_name` child, which would include `module_name`.
 
 - [ ] **Step 1: Write failing tests** in `tests/test_python_calls.py`. Helpers:
 
@@ -432,6 +452,8 @@ def cands(src, qualname, text, key="pkg/mod"):
     ("from p import x as a\ndef f():\n    a.g()\n", "f", "a.g", [("p.x", "g"), ("p", "x.g")]),
     ("from __future__ import annotations\nfrom m import *\ndef f():\n    annotations()\n", "f", "annotations", []),
     ("def f():\n    g()().h()\n", "f", "g()().h", []),
+    ("import x.y\ndef f():\n    x.y()\n", "f", "x.y", []),           # proper prefixes only
+    ("class C:\n    def m(self):\n        def inner():\n            self.o()\n", "C.m.inner", "self.o", []),
     # function-local import is scoped to that function
     ("def a():\n    from m import g\ndef b():\n    g()\n", "b", "g", []),
     # the owning node decides the scope chain: a default runs in outer
@@ -458,6 +480,11 @@ def test_resolution(src, qualname, text, expected):
 def test_relative_imports(key, src, expected):
     call = doc_of(src, key=key).module.calls[0]
     assert [(r.module, r.qualname) for r in call.candidates] == expected
+
+def test_empty_module_name_gives_no_own_candidates():
+    d = doc_of("def g(): pass\nfrom m import h\ng()\nh()\n", key="__init__")
+    assert [[(r.module, r.qualname) for r in c.candidates] for c in d.module.calls] == [
+        [], [("m", "h"), ("m", "h.__init__")]]
 ```
 
   Check the skipped-function case by hand on the first run: `f.helper` must appear in `warnings` with that qualname, and `f` must still be charted.
@@ -500,8 +527,11 @@ def test_falls_back_to_later_candidate_and_none():
 
 def test_module_chart_calls_are_linked_and_never_targets():
     d = parse("def main(): pass\nif __name__ == '__main__':\n    main()\n", "app")
-    linked = link([d])[0]
-    assert targets(linked) == [("main", ("app", "main"))]
+    assert targets(link([d])[0]) == [("main", ("app", "main"))]
+    f = d.functions[0]
+    probe = Call(node=f"{f.qualname}#start", text="x", candidates=[CallRef("app", "<module>")], target=None)
+    d2 = replace(d, functions=[replace(f, calls=[probe])])
+    assert link([d2])[0].functions[0].calls[0].target is None
 
 def test_independent_of_document_order():
     a = parse("from b import g\ndef f():\n    g()\n", "a")
@@ -552,6 +582,9 @@ def test_input_is_not_mutated():
     - Labels are qualnames, `<module>` for the module chart, escaped.
     - Edges are deduplicated, drawn only to drawn charts, and sorted.
     - `rankdir=LR`; the graph name goes through `graphviz.nohtml`.
+    - Clusters are created with `graph.subgraph(name=f"cluster_{i}", graph_attr={"label": …}, node_attr={}, edge_attr={})`, so the parent's `rankdir` and font attributes are not repeated in every cluster.
+    - Targets are mapped back to node IDs through the same index rule as `link`: documents with an empty module name, and module names shared by several documents, are not looked up. A target that maps to no drawn node gets no edge.
+    - Mermaid clusters are written as `subgraph s{i} ["{label}"]` (with a space before `[`) and closed with `end`.
 
 - [ ] **Step 1: Write failing tests** in `tests/test_callgraph.py`. Use `parse` as in Task 6 and `link`.
 
@@ -631,13 +664,13 @@ def test_svg_renders():
 - Consumes: `link` (Task 6), the call-graph backend (Task 7).
 - Produces:
   - `inputs.collision_error(inputs: list[Input], reserved: Mapping[str, str] = {}) -> str | None`. Reserved keys are checked first: an input whose `key.as_posix()` is a reserved key gives `f"error: output name collision: {path} maps to '{key}'; {reason}"`.
-  - `output.py` imports `render_callgraph`, `to_callgraph_dot` and `to_callgraph_mermaid` by name, as it does `render`, so tests can monkeypatch `pyflowcharts.output.render_callgraph`.
+  - `output.py` imports `render_callgraph`, `to_callgraph_dot` and `to_callgraph_mermaid` by name, as it does `render`, so tests can monkeypatch `pyflowcharts.output.render_callgraph`. If the format dispatch is shared between `_chart` and `write_callgraph`, pass the renderer functions in at call time (or look them up as module globals inside the method). Never bind them in a module-level table, which would capture the originals before a monkeypatch.
   - `output.Writer.write_callgraph(documents: list[Document]) -> None`. It writes `OUTDIR/callgraph.<ext>` for each selected format among `dot`, `svg`, `png` and `mermaid`, and nothing when no document has a chart. Graphviz-missing and write failures are handled as in `_chart`.
   - CLI:
     - `--no-call-graph` (`store_true`), help `"do not write the run's call graph picture"`.
     - `main` calls `link` on all parsed documents before `_select`.
     - It passes `reserved={} if args.no_call_graph else {"callgraph": CALLGRAPH_RESERVED}` to `collision_error`, with `CALLGRAPH_RESERVED = "it is reserved for the call graph; rename the file, chart its parent directory instead, or pass --no-call-graph"`.
-    - After writing the documents, it calls `writer.write_callgraph([doc for _, result in results])` unless `--no-call-graph` is given.
+    - After writing the documents, it calls `writer.write_callgraph([result.document for _, result in results])` unless `--no-call-graph` is given.
 
 - [ ] **Step 1: Write failing tests.**
   - `tests/test_inputs.py`:
@@ -710,7 +743,7 @@ def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, ca
     assert len(capsys.readouterr().err.splitlines()) == 1  # reported once
 ```
 
-  Update the existing exact output-set assertions (e.g. `test_directory_input_mirrors_tree`, `test_text_formats`) to include `callgraph.dot` / `callgraph.mmd` where the run selects those formats.
+  Update the existing exact output-set assertions over `OUTDIR` to include `callgraph.dot` / `callgraph.mmd` where the run selects those formats. `test_directory_input_mirrors_tree` needs it; `test_text_formats` only looks inside `o/mod/` and is unaffected. Search `tests/test_cli.py` for other exact sets over the output root.
 
 - [ ] **Step 2: Run** `uv run pytest tests/test_cli.py tests/test_output.py tests/test_inputs.py -v`. Expected: the new tests FAIL.
 - [ ] **Step 3: Implement** the Interfaces.
@@ -749,5 +782,5 @@ def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, ca
   - A short "Call graphs" subsection: what is resolved, the limits, and "walk the import root (`src/`)".
   - Known simplifications: replace the call-graph bullet with the resolution limits.
 - [ ] **Step 4: New spec status.** Set it to "Implemented; folded into the main spec."
-- [ ] **Step 5: Verify** with `uv run pytest && uv run ruff check`, then `grep -in "schema version 2\|(= 2)\|call graphs are out of scope\|call graphs between functions are not drawn" README.md AGENTS.md docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`. Expected: tests pass and grep prints nothing.
+- [ ] **Step 5: Verify** with `uv run pytest && uv run ruff check`, then `grep -in "(schema version 2)\|(= 2)\|call graphs are out of scope\|call graphs between functions are not drawn" README.md AGENTS.md docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`. Expected: tests pass and grep prints nothing. The main spec's changelog line "Schema version 2 added `Chart`, …" is history and stays; add a "Schema version 3 added …" line after it.
 - [ ] **Step 6: Commit** `docs: describe call graphs`
