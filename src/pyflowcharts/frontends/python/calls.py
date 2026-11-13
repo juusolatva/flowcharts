@@ -107,14 +107,7 @@ class _Scope:
         self.definitions.setdefault(name, (kind, qualname))
 
     def bind(self, name: str, binding: _Binding) -> None:
-        bindings = self.imports.setdefault(name, [])
-        if isinstance(binding, _Module):
-            # ``import a.b`` and ``import a.c`` bind one module ``a`` reaching both.
-            for i, old in enumerate(bindings):
-                if isinstance(old, _Module) and old.base == binding.base:
-                    bindings[i] = _Module(old.base, old.reachable | binding.reachable)
-                    return
-        bindings.append(binding)
+        self.imports.setdefault(name, []).append(binding)
 
 
 class Resolver:
@@ -240,9 +233,22 @@ class Resolver:
                 out += self._own(".".join([qualname, *rest]) if rest else f"{qualname}.__init__")
             elif not rest:
                 out += self._own(qualname)
-        for binding in table.imports.get(first, []):
-            out += _through(binding, rest)
+        bindings = table.imports.get(first, [])
+        modules = [b for b in bindings if isinstance(b, _Module)]
+        for binding in bindings:
+            if isinstance(binding, _Name):
+                out += _through(binding, rest)
+            elif binding is modules[0]:
+                out += _module_candidates(modules, rest)
         return out
+
+
+def _module_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef]:
+    """Candidates through every ``import`` binding one name, the longest module first. Each
+    import counts on its own (it may sit in one branch of a ``try`` or ``if``), but with
+    ``import a.b`` and ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
+    refs = [ref for module in modules for ref in _through(module, rest)]
+    return sorted(refs, key=lambda ref: -ref.module.count("."))
 
 
 def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:

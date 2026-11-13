@@ -247,11 +247,34 @@ def f():
         # module imports
         ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
         ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),
-        # submodule imports under one name merge: the longest module prefix wins
-        ("import a.b\nimport a.c\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
-        ("import a.c\nimport a.b\ndef f():\n    a.c.f()\n", "f", "a.c.f", [("a.c", "f")]),
+        # submodule imports under one name: the longest module comes first
+        (
+            "import a.b\nimport a.c\ndef f():\n    a.c.f()\n",
+            "f",
+            "a.c.f",
+            [("a.c", "f"), ("a", "c.f")],
+        ),
+        (
+            "import a.c\nimport a.b\ndef f():\n    a.c.f()\n",
+            "f",
+            "a.c.f",
+            [("a.c", "f"), ("a", "c.f")],
+        ),
         ("import a.b\nimport a.c\ndef f():\n    a.g()\n", "f", "a.g", [("a", "g")]),
-        ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", []),
+        # each import still counts on its own (it may be in one branch of a try or if)
+        ("import a.b\nimport a.c\ndef f():\n    a.c()\n", "f", "a.c", [("a", "c")]),
+        (
+            "try:\n    import a.b\nexcept ImportError:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b.c\nimport a.b\ndef f():\n    a.b.c.d()\n",
+            "f",
+            "a.b.c.d",
+            [("a.b.c", "d"), ("a.b", "c.d")],
+        ),
         ("import x.y as z\ndef f():\n    z.C.m()\n", "f", "z.C.m", [("x.y", "C.m")]),
         ("import x.y as z\ndef f():\n    x.g()\n", "f", "x.g", []),
         ("from p import x as a\ndef f():\n    a.g()\n", "f", "a.g", [("p.x", "g"), ("p", "x.g")]),
