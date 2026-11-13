@@ -27,7 +27,7 @@ _SKIPPED = frozenset({"pass_statement", "global_statement", "nonlocal_statement"
 _EXTRAS = frozenset({"comment", "line_continuation"})
 
 
-def _named(node: Node) -> list[Node]:
+def named(node: Node) -> list[Node]:
     """Named children without the grammar's extras (comments, line continuations), which
     can appear anywhere, including before a statement's expression."""
     return [c for c in node.named_children if c.type not in _EXTRAS]
@@ -35,9 +35,14 @@ def _named(node: Node) -> list[Node]:
 
 def convert_body(func: Node, src: Source, options: ChartOptions) -> Block:
     """The function body as model statements, with a leading docstring dropped."""
-    block = func.child_by_field_name("body")
-    stmts = _named(block) if block is not None else []
-    if stmts and _is_docstring(stmts[0]):
+    return convert_statements(func.child_by_field_name("body"), src, options)
+
+
+def convert_statements(parent: Node | None, src: Source, options: ChartOptions) -> Block:
+    """``parent``'s statements (a function body or the module) as model statements, with a
+    leading docstring dropped."""
+    stmts = named(parent) if parent is not None else []
+    if stmts and is_docstring(stmts[0]):
         stmts = stmts[1:]
     return _Converter(src, options).stmts(stmts)
 
@@ -68,13 +73,13 @@ def always_true(cond: str) -> bool:
     return isinstance(expr, ast.Constant) and bool(expr.value)
 
 
-def _is_docstring(stmt: Node) -> bool:
-    children = _named(stmt)
+def is_docstring(stmt: Node) -> bool:
+    children = named(stmt)
     if stmt.type != "expression_statement" or len(children) != 1:
         return False
     value = children[0]
-    while value.type == "parenthesized_expression" and len(_named(value)) == 1:
-        value = _named(value)[0]
+    while value.type == "parenthesized_expression" and len(named(value)) == 1:
+        value = named(value)[0]
     strings = value.named_children if value.type == "concatenated_string" else [value]
     return all(s.type == "string" and _is_plain_string(s) for s in strings)
 
@@ -120,7 +125,7 @@ class _Converter:
         self.options = options
 
     def block(self, block: Node | None) -> Block:
-        return self.stmts(_named(block)) if block is not None else ()
+        return self.stmts(named(block)) if block is not None else ()
 
     def stmts(self, nodes: list[Node]) -> Block:
         out: list[Stmt] = []
@@ -138,7 +143,7 @@ class _Converter:
             case _ if node.type in _SKIPPED:
                 return None
             case "return_statement":
-                values = _named(node)
+                values = named(node)
                 value = values[0] if values else None
                 if value is None or not self.options.show_returns:
                     return Terminal(NodeKind.RETURN, "return", loc)
@@ -186,7 +191,7 @@ class _Converter:
 
     def _expression(self, node: Node) -> Stmt | None:
         loc = self.src.location(node)
-        children = _named(node)
+        children = named(node)
         inner = children[0] if len(children) == 1 else None
         match inner.type if inner is not None else None:
             case "ellipsis":
