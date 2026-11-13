@@ -40,7 +40,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_module=not args.no_module,
     )
     expansion = expand(args.paths, args.exclude)
-    reserved = {} if args.no_call_graph else {"callgraph": CALLGRAPH_RESERVED}
+    # The key is only taken when a picture will actually be written.
+    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
+    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
     if (collision := collision_error(expansion.inputs, reserved)) is not None:
         print(collision, file=sys.stderr)
         return EXIT_ERROR

@@ -357,3 +357,9 @@ def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, ca
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "dot"]) == 2
     assert (tmp_path / "o/callgraph.dot").exists()
     assert len(capsys.readouterr().err.splitlines()) == 1  # reported once
+
+
+def test_callgraph_key_free_when_no_picture_is_written(tmp_path):
+    src = write(tmp_path, "callgraph.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    assert (tmp_path / "o/callgraph.json").exists()
