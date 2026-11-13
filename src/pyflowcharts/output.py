@@ -3,10 +3,17 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 from pathlib import Path, PurePosixPath
+from typing import Literal
 
 import graphviz
 
+from pyflowcharts.backends.callgraph import (
+    render_callgraph,
+    to_callgraph_dot,
+    to_callgraph_mermaid,
+)
 from pyflowcharts.backends.dot import render, to_dot
 from pyflowcharts.backends.mermaid import to_mermaid
 from pyflowcharts.ir import Chart, Document
@@ -46,17 +53,45 @@ class Writer:
         for chart in doc.functions:
             self._chart(chart, base, chart.qualname)
 
+    def write_callgraph(self, documents: list[Document]) -> None:
+        """Write ``OUTDIR/callgraph.<ext>`` in the picture formats, unless no document has a
+        chart."""
+        if not any(doc.functions or doc.module is not None for doc in documents):
+            return
+        self._picture(
+            self.outdir / "callgraph",
+            lambda: to_callgraph_dot(documents),
+            lambda: to_callgraph_mermaid(documents),
+            lambda fmt: render_callgraph(documents, fmt),
+        )
+
     def _chart(self, chart: Chart, directory: Path, name: str) -> None:
+        self._picture(
+            directory / name,
+            lambda: to_dot(chart),
+            lambda: to_mermaid(chart),
+            lambda fmt: render(chart, fmt),
+        )
+
+    def _picture(
+        self,
+        base: Path,
+        dot: Callable[[], str],
+        mermaid: Callable[[], str],
+        image: Callable[[Literal["svg", "png"]], bytes],
+    ) -> None:
+        """Write ``base.<ext>`` for each picture format. The renderers are called lazily, so
+        they are looked up when used."""
         for fmt in self.formats:
-            target = directory / f"{name}.{EXTENSIONS.get(fmt, fmt)}"
+            target = base.parent / f"{base.name}.{EXTENSIONS.get(fmt, fmt)}"
             match fmt:
                 case "dot":
-                    self._save(target, to_dot(chart))
+                    self._save(target, dot())
                 case "mermaid":
-                    self._save(target, to_mermaid(chart))
+                    self._save(target, mermaid())
                 case "svg" | "png" if not self.graphviz_missing:
                     try:
-                        data = render(chart, fmt)
+                        data = image(fmt)
                     except graphviz.ExecutableNotFound:
                         print(GRAPHVIZ_MISSING, file=sys.stderr)
                         self.graphviz_missing = True

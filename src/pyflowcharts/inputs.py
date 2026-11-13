@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -114,9 +115,13 @@ def _dedupe(found: list[Input]) -> list[Input]:
     return list(by_file.values())
 
 
-def collision_error(inputs: list[Input]) -> str | None:
-    """The error for two inputs whose outputs would overlap, or ``None``: the same key, or
-    one key whose segments are a proper prefix of another's (``OUTDIR/K/`` is shared)."""
+def collision_error(inputs: list[Input], reserved: Mapping[str, str] | None = None) -> str | None:
+    """The error for two inputs whose outputs would overlap, or ``None``: a key in
+    ``reserved`` (mapped to the message tail explaining why), the same key, or one key whose
+    segments are a proper prefix of another's (``OUTDIR/K/`` is shared)."""
+    for item in inputs:
+        if (reason := (reserved or {}).get(item.key.as_posix())) is not None:
+            return f"error: output name collision: {item.path} maps to '{item.key}'; {reason}"
     by_key: dict[tuple[str, ...], Input] = {}
     for item in inputs:
         parts = item.key.parts
