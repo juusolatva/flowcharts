@@ -69,15 +69,15 @@ export function createSidebar({ tree, search, warnings, onOpen }) {
 
   function drawWarnings() {
     const skipped = state.entries.flatMap((e) => e.skipped.map((s) => `${e.key}: ${s.qualname}: ${s.message}`));
-    const errors = state.entries.filter((e) => e.error).map((e) => `${e.key}: ${e.error}`);
     const count = state.messages.length + skipped.length;
     const toggle = el("button", {
       type: "button",
       text: `⚠ ${count} warning${count === 1 ? "" : "s"}`,
       onclick: () => { warningsOpen = !warningsOpen; drawWarnings(); },
     });
-    const lines = warningsOpen ? [...state.messages, ...skipped, ...errors] : [];
-    warnings.replaceChildren(toggle, ...(count + errors.length === 0 && warningsOpen ? [el("p", { class: "muted", text: "None." })] : []),
+    // file errors are already among the messages (the server lists every read error there)
+    const lines = warningsOpen ? [...state.messages, ...skipped] : [];
+    warnings.replaceChildren(toggle, ...(count === 0 && warningsOpen ? [el("p", { class: "muted", text: "None." })] : []),
       ...lines.map((text) => el("p", { text })));
   }
 
