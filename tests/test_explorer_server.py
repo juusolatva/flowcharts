@@ -111,6 +111,15 @@ def test_other_methods_not_allowed(running_server, method):
     assert status == 405
 
 
+def test_head_is_405_without_a_body(running_server):
+    status, headers, body = request(
+        running_server.port, "HEAD", "/", headers=authed(running_server)
+    )
+    assert status == 405
+    assert header(headers, "Allow") == "GET"
+    assert body == b""
+
+
 def test_post_with_token_query_is_405_without_cookie(running_server):
     status, headers, _ = request(running_server.port, "POST", f"/?token={running_server.token}")
     assert status == 405
