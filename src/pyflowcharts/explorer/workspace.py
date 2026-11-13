@@ -99,6 +99,14 @@ def _stat(path: Path) -> tuple[int | None, ...]:
     return (st.st_mtime_ns, st.st_size, st.st_ctime_ns, st.st_ino)
 
 
+def _openable(path: Path) -> bool:
+    try:
+        with path.open("rb"):
+            return True
+    except OSError:
+        return False
+
+
 @dataclass(frozen=True)
 class _Scan:
     expansion: Expansion
@@ -127,9 +135,9 @@ class Workspace:
         self._stop = stop if stop is not None else threading.Event()
         self._lock = threading.Lock()
         scan = self._scan()
-        self._last = scan.fingerprint
-        snapshot, self._failed, self._startup = self._build(1, scan)
+        snapshot, self._failed, self._startup, self._unreadable = self._build(1, scan)
         self._snapshot = snapshot
+        self._last = (scan.fingerprint, self._probe())
 
     def current(self) -> Snapshot:
         with self._lock:
@@ -145,7 +153,7 @@ class Workspace:
     def refresh(self) -> bool:
         """Re-parse if the files changed (after the settle rule). ``True`` if it re-parsed."""
         scan = self._scan()
-        if scan.fingerprint == self._last:
+        if (scan.fingerprint, self._probe()) == self._last:
             return False
         first_seen = self._clock()
         while True:
@@ -156,12 +164,21 @@ class Workspace:
             scan = again
             if settled or self._clock() - first_seen >= self.SETTLE_CAP:
                 break
-        snapshot, failed, _ = self._build(self._snapshot.generation + 1, scan)
+        snapshot, failed, _, self._unreadable = self._build(self._snapshot.generation + 1, scan)
         with self._lock:
             self._snapshot = snapshot
         self._failed = failed
-        self._last = scan.fingerprint  # only once built, so a failed build is retried
+        self._last = (scan.fingerprint, self._probe())  # only once built: a failed build retries
         return True
+
+    def _probe(self) -> tuple[tuple[str, bool], ...]:
+        """Whether each file that failed to read in the last build can be opened now.
+
+        A read can fail while ``stat()`` keeps working (a file locked by another program);
+        this notices when it becomes readable again. Decoding errors stay readable, so they
+        don't cause a re-parse on every poll.
+        """
+        return tuple((str(path), _openable(path)) for path in self._unreadable)
 
     def _scan(self) -> _Scan:
         expansion = expand(self._paths, self._excludes)
@@ -173,7 +190,10 @@ class Workspace:
         )
         return _Scan(expansion, kept, duplicates, fingerprint)
 
-    def _build(self, generation: int, scan: _Scan) -> tuple[Snapshot, bool, list[str]]:
+    def _build(
+        self, generation: int, scan: _Scan
+    ) -> tuple[Snapshot, bool, list[str], tuple[Path, ...]]:
+        """The snapshot, whether startup failed, the startup messages and the unreadable files."""
         parsed = parse_all(scan.kept, self._options)
         documents = tuple(result.document for _, result in parsed.results)
         startup = [
@@ -191,7 +211,7 @@ class Workspace:
             edges=tuple(resolved_edges(list(documents))),
         )
         failed = not documents and bool(scan.expansion.errors or parsed.read_errors)
-        return snapshot, failed, startup
+        return snapshot, failed, startup, tuple(parsed.errors)
 
 
 def _parse_messages(parsed: Parsed) -> list[str]:

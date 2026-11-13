@@ -310,3 +310,32 @@ def test_same_size_edit_with_restored_mtime_triggers_refresh(tmp_path):
     assert m.stat().st_size == before.st_size
     assert ws.refresh() is True
     assert [f.qualname for f in ws.current().entries[0].functions] == ["h"]
+
+
+def test_file_that_becomes_readable_again_is_reparsed(tmp_path, monkeypatch):
+    m = write(tmp_path / "m.py", F)
+    real_open = Path.open
+    locked = {"on": True}
+
+    def fake_open(self, *args, **kwargs):
+        if self.name == "m.py" and locked["on"]:
+            raise PermissionError("locked by another program")
+        return real_open(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "open", fake_open)
+    ws = make([m])
+    assert ws.current().entries[0].error is not None
+    assert ws.refresh() is False  # still unreadable: no change, no re-parse
+    locked["on"] = False  # readable again, with the same metadata
+    assert ws.refresh() is True
+    assert ws.current().entries[0].error is None
+    assert ws.refresh() is False
+
+
+def test_permanent_decode_errors_do_not_reparse_every_poll(tmp_path):
+    m = tmp_path / "m.py"
+    m.write_bytes(b"\x00")
+    ws = make([m])
+    assert ws.current().entries[0].error is not None
+    assert ws.refresh() is False
+    assert ws.current().generation == 1
