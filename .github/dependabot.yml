@@ -1,0 +1,31 @@
+# Weekly version updates for the SHA-pinned CI actions and the uv dependencies (pyproject.toml and
+# uv.lock). The 14-day cooldown matches the AGENTS.md rule that new versions must be two weeks old.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      # Majors stay out of the group and get one PR each, so a breaking major can't block the rest.
+      github-actions:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: ci
+
+  - package-ecosystem: uv
+    directory: /
+    schedule:
+      interval: weekly
+    cooldown:
+      default-days: 14
+    groups:
+      # Majors stay out of the group and get one PR each, so a breaking major can't block the rest.
+      python-packages:
+        patterns: ["*"]
+        update-types: [minor, patch]
+    commit-message:
+      prefix: deps
