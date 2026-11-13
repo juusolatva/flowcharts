@@ -27,7 +27,9 @@ class ModuleInfo:
 def module_info(key: PurePosixPath) -> ModuleInfo:
     """``pkg/io/load`` → ``pkg.io.load`` in package ``pkg.io``; ``pkg/__init__`` → ``pkg``
     in package ``pkg``; a bare ``__init__`` has no module name."""
-    parts = tuple(unicodedata.normalize("NFKC", part) for part in key.parts)  # as imports are
+    # NFC, not NFKC: macOS treats the encodings of one character (é, or e plus an accent) as
+    # one file name, but Python does not normalize file names, so ``ﬁ.py`` is never ``fi``.
+    parts = tuple(unicodedata.normalize("NFC", part) for part in key.parts)
     package = parts[:-1]
     if parts[-1:] == ("__init__",):
         return ModuleInfo(".".join(package), package)
