@@ -74,18 +74,21 @@ def test_assignment_with_comment_inside_is_not_work():
 
 def test_no_module_option():
     r = parse("main()\nbreak\n", show_module=False)
-    assert r.document.module is None and r.warnings == ()
+    assert r.document.module is None
+    assert r.warnings == ()
 
 
 def test_skeleton_syntax_error_means_no_module_chart():
     r = parse("main()\nx = = 1\ndef g(): pass\n")
-    assert r.document.module is None and [c.qualname for c in r.document.functions] == ["g"]
+    assert r.document.module is None
+    assert [c.qualname for c in r.document.functions] == ["g"]
     assert [(w.line, w.qualname) for w in r.warnings] == [(2, None)]
 
 
 def test_stray_break_skips_module_chart():
     r = parse("main()\nbreak\ndef g(): pass\n")
-    assert r.document.module is None and [c.qualname for c in r.document.functions] == ["g"]
+    assert r.document.module is None
+    assert [c.qualname for c in r.document.functions] == ["g"]
     assert [str(w) for w in r.warnings] == [
         "t.py:2: warning: syntax error in module code; module chart skipped"
     ]
@@ -103,7 +106,8 @@ def test_unsupported_top_level_syntax_skips_module_chart():
     src = "type Box[T = int] = list[T]\nmain()\ndef g(): pass\n"
     _needs_pep696(src)
     r = parse(src)
-    assert r.document.module is None and [c.qualname for c in r.document.functions] == ["g"]
+    assert r.document.module is None
+    assert [c.qualname for c in r.document.functions] == ["g"]
     assert [str(w) for w in r.warnings] == [
         "t.py:1: warning: unsupported syntax in module code; module chart skipped"
     ]
@@ -115,5 +119,6 @@ def test_unsupported_syntax_without_top_level_work_is_quiet():
     src = "class A[T = int]:\n    def m(self):\n        return 1\ntype Box[T = int] = list[T]\n"
     _needs_pep696(src)
     r = parse(src)
-    assert r.document.module is None and r.warnings == ()
+    assert r.document.module is None
+    assert r.warnings == ()
     assert [c.qualname for c in r.document.functions] == ["A.m"]

@@ -10,7 +10,7 @@ from typing import Literal
 import graphviz
 
 from pyflowcharts.backends.mermaid import escape
-from pyflowcharts.ir import MODULE_QUALNAME, Document
+from pyflowcharts.ir import Chart, Document
 
 type _Key = tuple[int, str]  # (document index, chart qualname)
 
@@ -25,13 +25,23 @@ class _Cluster:
 def _layout(documents: list[Document]) -> tuple[list[_Cluster], list[tuple[_Key, _Key]]]:
     """Clusters for the documents that have charts, and the sorted, deduplicated edges
     between drawn charts."""
-    clusters = []
-    for i, doc in enumerate(documents):
-        charts = [c.qualname for c in doc.functions]
-        if doc.module is not None:
-            charts.append(MODULE_QUALNAME)
-        if charts:
-            clusters.append(_Cluster(i, doc.module_name or doc.source, charts))
+    return _clusters(documents), _edges(documents)
+
+
+def _charts(doc: Document) -> list[Chart]:
+    """The document's function charts in order, then its module chart."""
+    return [*doc.functions, *([doc.module] if doc.module is not None else [])]
+
+
+def _clusters(documents: list[Document]) -> list[_Cluster]:
+    return [
+        _Cluster(i, doc.module_name or doc.source, [c.qualname for c in charts])
+        for i, doc in enumerate(documents)
+        if (charts := _charts(doc))
+    ]
+
+
+def _edges(documents: list[Document]) -> list[tuple[_Key, _Key]]:
     # The linker's index rule: no empty and no shared module names.
     names = Counter(doc.module_name for doc in documents)
     drawn = {
@@ -42,15 +52,14 @@ def _layout(documents: list[Document]) -> tuple[list[_Cluster], list[tuple[_Key,
     }
     edges: set[tuple[_Key, _Key]] = set()
     for i, doc in enumerate(documents):
-        charts = [*doc.functions, *([doc.module] if doc.module is not None else [])]
-        for chart in charts:
-            for call in chart.calls:
-                if call.target is None:
-                    continue
-                target = drawn.get((call.target.module, call.target.qualname))
-                if target is not None:
-                    edges.add(((i, chart.qualname), target))
-    return clusters, sorted(edges)
+        for chart in _charts(doc):
+            targets = (
+                drawn.get((call.target.module, call.target.qualname))
+                for call in chart.calls
+                if call.target is not None
+            )
+            edges.update(((i, chart.qualname), t) for t in targets if t is not None)
+    return sorted(edges)
 
 
 def _dot_id(key: _Key) -> str:

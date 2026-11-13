@@ -47,7 +47,8 @@ def test_sequence_and_terminal():
         ("return 1", "end", None),
     }
     assert [n.id for n in c.nodes] == ["f#start", "f#end", "f#L2C4", "f#L3C4"]
-    assert c.nodes[0].kind is NodeKind.START and c.nodes[1].location is None
+    assert c.nodes[0].kind is NodeKind.START
+    assert c.nodes[1].location is None
 
 
 def test_hidden_steps_need_variables_option():
@@ -61,7 +62,8 @@ def test_reveal_rule_per_block():
     other = (Step("n = 1", at(5), hidden=True), Step("g()", at(6)))
     body = (Branch("if a", at(2), (Arm("True", inner), Arm("False", other)), None),)
     labels = {n.label for n in chart(body).nodes}
-    assert "n = 0" in labels and "n = 1" not in labels
+    assert "n = 0" in labels
+    assert "n = 1" not in labels
 
 
 def test_branch_default_falls_through():
@@ -129,7 +131,8 @@ def test_loop_without_exit():
         Step("after()", at(4)),
     )
     f = flow(chart(body))
-    assert ("while True", "after()", "False") not in f and not any(t == "after()" for _, t, _ in f)
+    assert ("while True", "after()", "False") not in f
+    assert not any(t == "after()" for _, t, _ in f)
 
 
 def test_stray_break_raises():
@@ -182,7 +185,8 @@ def test_try_except_else_finally():
 
 def test_empty_finalbody_still_gets_a_node():
     c = chart((try_stmt(2, (Step("a()", at(3)),), finalbody=()),))
-    assert ("finally", "end", None) in flow(c) and any(n.id == "f#L2C4~finally" for n in c.nodes)
+    assert ("finally", "end", None) in flow(c)
+    assert any(n.id == "f#L2C4~finally" for n in c.nodes)
 
 
 def test_no_finally_clause():
@@ -213,7 +217,8 @@ def test_nested_try_body_points_only_at_inner_handlers():
     inner = try_stmt(3, (Step("a()", at(4)),), (Handler("except I", at(5), (Step("h()", at(6)),)),))
     outer = try_stmt(2, (inner,), (Handler("except O", at(7), ()),))
     f = flow(chart((outer,)))
-    assert ("a()", "except I", "exception") in f and ("a()", "except O", "exception") not in f
+    assert ("a()", "except I", "exception") in f
+    assert ("a()", "except O", "exception") not in f
     assert {("except I", "except O", "exception"), ("h()", "except O", "exception")} <= f
     # The inner try node is itself a statement of the outer body.
     assert ("try", "except O", "exception") in f
@@ -232,7 +237,8 @@ def test_try_finally_without_handlers_draws_exception_copy():
     c = chart(body)
     f = flow(c)
     assert {("a()", "finally (exception)", "exception"), ("finally (exception)", "c()", None)} <= f
-    assert ("c()", "end", None) in f and ("c()", "after()", None) in f
+    assert ("c()", "end", None) in f
+    assert ("c()", "after()", None) in f
     ids = {n.id for n in c.nodes}
     assert {"f#L2C4~finally", "f#L2C4~finally~exception@L2C4", "f#L5C4~exception@L2C4"} <= ids
 
@@ -277,7 +283,8 @@ def test_finally_exception_propagation_relabels_branch_edges():
 def test_try_finally_with_empty_body_draws_no_finally():
     c = chart((try_stmt(2, (), finalbody=(Step("c()", at(4)),)),))
     labels = {n.label for n in c.nodes}
-    assert "finally (exception)" not in labels and "finally" in labels
+    assert "finally (exception)" not in labels
+    assert "finally" in labels
 
 
 def test_raise_in_try_body_goes_to_handler_not_end():
@@ -287,7 +294,8 @@ def test_raise_in_try_body_goes_to_handler_not_end():
         ),
     )
     f = flow(chart(body))
-    assert ("raise E", "except E", "exception") in f and ("raise E", "end", None) not in f
+    assert ("raise E", "except E", "exception") in f
+    assert ("raise E", "end", None) not in f
 
 
 def test_reraise_in_handler_goes_outward():
@@ -295,7 +303,8 @@ def test_reraise_in_handler_goes_outward():
     inner = try_stmt(3, (Step("a()", at(4)),), (Handler("except I", at(5), reraise),))
     outer = try_stmt(2, (inner,), (Handler("except O", at(7), ()),))
     f = flow(chart((outer,)))
-    assert ("raise", "except O", "exception") in f and ("raise", "end", None) not in f
+    assert ("raise", "except O", "exception") in f
+    assert ("raise", "end", None) not in f
 
 
 def test_raise_outside_try_goes_to_end():
@@ -322,7 +331,8 @@ def test_return_runs_finally_return_copy_and_omits_plain_copy():
         ("finally (return)", "c()", None),
         ("c()", "end", None),
     } <= f
-    assert ("return 1", "end", None) not in f and "finally" not in {n.label for n in c.nodes}
+    assert ("return 1", "end", None) not in f
+    assert "finally" not in {n.label for n in c.nodes}
     assert {"f#L2C4~finally~return@L2C4", "f#L5C4~return@L2C4"} <= {n.id for n in c.nodes}
 
 
@@ -338,13 +348,15 @@ def test_return_through_two_nested_finally_blocks():
 def test_return_in_loop_inside_try_finally():
     loop = Loop("for x in xs", at(3), "next", "done", (ret(4, "return x"),), ())
     f = flow(chart((try_stmt(2, (loop,), finalbody=(Step("c()", at(6)),)),)))
-    assert ("return x", "finally (return)", None) in f and ("c()", "end", None) in f
+    assert ("return x", "finally (return)", None) in f
+    assert ("c()", "end", None) in f
     assert ("c()", "for x in xs", None) not in f
 
 
 def test_finally_body_return_overrides_pending_return():
     f = flow(chart((try_stmt(2, (ret(3),), finalbody=(ret(5, "return 2"),)),)))
-    assert ("return 2", "end", None) in f and ("return 1", "end", None) not in f
+    assert ("return 2", "end", None) in f
+    assert ("return 1", "end", None) not in f
 
 
 def test_break_runs_its_own_finally_copy():
@@ -370,7 +382,8 @@ def test_break_runs_its_own_finally_copy():
     } <= f
     ids = {n.id for n in c.nodes}
     assert {"f#L3C4~finally", "f#L3C4~finally~break@L3C4", "f#L8C4~break@L3C4"} <= ids
-    assert ("cleanup()", "after()", None) in f and ("cleanup()", "for x in xs", None) in f
+    assert ("cleanup()", "after()", None) in f
+    assert ("cleanup()", "for x in xs", None) in f
 
 
 def test_finally_continue_overrides_break():

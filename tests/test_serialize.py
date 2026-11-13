@@ -116,7 +116,8 @@ def test_reads_older_versions(doc, version):
         del data["module"]
     old = from_json(json.dumps(data))
     assert (old.schema_version, old.module_name, old.functions[0].calls) == (version, "", [])
-    assert old.module is None and old.functions == doc.functions
+    assert old.module is None
+    assert old.functions == doc.functions
 
 
 def test_reads_version_2_module_chart_without_calls(doc):

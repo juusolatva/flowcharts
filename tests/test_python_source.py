@@ -17,12 +17,14 @@ def first_stmt(text):
 def test_coding_cookie_and_bom():
     assert src(b"# -*- coding: latin-1 -*-\nx = '\xe9'\n").text.endswith("x = 'é'\n")
     s = src(b"\xef\xbb\xbfdef f():\n    pass\n")
-    assert s.text.startswith("def f") and s.location(s.tree.root_node.children[0]).column == 0
+    assert s.text.startswith("def f")
+    assert s.location(s.tree.root_node.children[0]).column == 0
 
 
 def test_crlf_is_normalised():
     s = src(b"def f():\r\n    g()\r\n")
-    assert "\r" not in s.text and s.location(s.tree.root_node.children[0]).end_line == 2
+    assert "\r" not in s.text
+    assert s.location(s.tree.root_node.children[0]).end_line == 2
 
 
 def test_bad_sources_are_file_level_errors():

@@ -31,7 +31,8 @@ def test_break_outside_loop_is_a_skipped_function():
     assert [c.qualname for c in r.document.functions] == ["f"]
     assert [(w.line, w.qualname) for w in r.warnings] == [(4, "f.g")]
     r = parse("def f():\n    continue\n")
-    assert r.document.functions == [] and r.warnings[0].line == 2
+    assert r.document.functions == []
+    assert r.warnings[0].line == 2
 
 
 def test_outside_error_is_one_warning_without_qualname():
@@ -39,14 +40,16 @@ def test_outside_error_is_one_warning_without_qualname():
     assert [c.qualname for c in r.document.functions] == ["g"]
     assert [(w.line, w.qualname) for w in r.warnings] == [(1, None)]
     r = parse("@(\ndef f():\n    pass\n")  # decorator error: f is still charted
-    assert [c.qualname for c in r.document.functions] == ["f"] and len(r.warnings) == 1
+    assert [c.qualname for c in r.document.functions] == ["f"]
+    assert len(r.warnings) == 1
 
 
 def test_metadata_is_complete_and_option_independent():
     src = 'def f(a: list[int] = "a  b") -> dict[str, int]:\n    pass\n'
     for n in (5, 60, 200):
         (c,) = parse(src, max_label_length=n).document.functions
-        assert c.parameters[0].default == '"a  b"' and c.returns == "dict[str, int]"
+        assert c.parameters[0].default == '"a  b"'
+        assert c.returns == "dict[str, int]"
 
 
 def test_document_metadata_and_locations():
@@ -54,8 +57,10 @@ def test_document_metadata_and_locations():
     r = PythonFrontend().parse(raw, "t.py", ChartOptions())
     c = r.document.functions[0]
     assert (r.document.language, r.document.schema_version) == ("python", 3)
-    assert c.nodes[2].label == "print('é')" and c.location.end_line == 3
-    assert c.is_async is False and c.name == "f"
+    assert c.nodes[2].label == "print('é')"
+    assert c.location.end_line == 3
+    assert c.is_async is False
+    assert c.name == "f"
 
 
 def test_too_deeply_nested_is_a_source_error():
