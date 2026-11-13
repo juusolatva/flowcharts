@@ -155,3 +155,28 @@ def test_no_cors_headers(running_server):
         headers={**authed(running_server), "Origin": "http://evil.example"},
     )
     assert not [n for n, _ in headers if n.lower().startswith("access-control-")]
+
+
+def test_handler_uses_one_snapshot_per_request(running_server, monkeypatch):
+    calls = []
+    original = running_server.workspace.current
+
+    def counting():
+        calls.append(1)
+        return original()
+
+    monkeypatch.setattr(running_server.workspace, "current", counting)
+    gen = original().generation
+    status, headers, _ = request(
+        running_server.port, "GET", f"/api/document/0?g={gen}", headers=authed(running_server)
+    )
+    assert status == 200
+    assert header(headers, "Cache-Control") == "no-store"
+    assert len(calls) == 1
+
+
+def test_api_events_is_not_routed_yet(running_server):
+    status, _, _ = request(
+        running_server.port, "GET", "/api/events", headers=authed(running_server)
+    )
+    assert status == 404

@@ -10,6 +10,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
+from pyflowcharts.explorer import api
 from pyflowcharts.explorer.assets import load_asset
 from pyflowcharts.explorer.workspace import Workspace
 
@@ -20,6 +21,8 @@ SECURITY_HEADERS = {
 }
 DISCONNECTS = (BrokenPipeError, ConnectionResetError)
 STATIC_PREFIX = "/static/"
+API_PREFIX = "/api/"
+EVENTS_PATH = "/api/events"  # served from Task 10 on
 
 
 class ExplorerServer(ThreadingHTTPServer):
@@ -139,12 +142,20 @@ class Handler(BaseHTTPRequestHandler):
         self.route(url.path, query)
 
     def route(self, path: str, query: dict[str, list[str]]) -> None:
-        """Dispatch an authenticated GET. Later tasks add the API routes here."""
+        """Dispatch an authenticated GET."""
         if path == "/":
             return self.serve_asset("index.html")
         if path.startswith(STATIC_PREFIX):
             return self.serve_asset(path[len(STATIC_PREFIX) :])
+        if path.startswith(API_PREFIX) and path != EVENTS_PATH:
+            return self.serve_api(path[len(API_PREFIX) :], query)
         self.respond_text(HTTPStatus.NOT_FOUND)
+
+    def serve_api(self, raw_path: str, query: dict[str, list[str]]) -> None:
+        response = api.handle(raw_path, query, self.server.workspace.current())
+        self.respond(
+            response.status, response.body, response.content_type, {"Cache-Control": "no-store"}
+        )
 
     def serve_asset(self, name: str) -> None:
         loaded = load_asset(name)
