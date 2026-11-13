@@ -7,7 +7,7 @@
 [![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/github/license/juusolatva/flowcharts)](LICENSE)
 
-`pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Each run also draws a **call graph** of the charted functions, clustered by file. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
+`pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Each run also draws a **call graph** of the charted functions, clustered by file. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON, or browsed in a local web app that updates as you edit (see [Exploring](#exploring)).
 
 The JSON output (schema version 3) is the stable, machine-readable format. It holds the full graph, source locations and every call with its resolved target, and is meant for other tools, such as the explorer.
 
@@ -102,7 +102,17 @@ uv run pyflowcharts explore src/                  # browse a tree in the browser
 uv run pyflowcharts explore a.py b.py --port 8765 --no-browser
 ```
 
-`explore` parses the given files or directories, starts a local web app and opens it in your browser (the URL is also printed). It shows the call graph, the flowchart of every function and module with the source beside it, and lets you search for functions, follow calls from node to node and see the source lines of a node highlighted. It needs the Graphviz `dot` executable, since the server draws the charts: without it the command exits with code 2.
+`explore` parses the given files or directories, starts a local web app and opens it in your browser (the URL is also printed). It needs the Graphviz `dot` executable, since the server draws the charts.
+
+The app opens on the run's call graph. The sidebar lists the files and their charts, with a search box above them.
+
+- Click a function in the call graph or the sidebar to open its flowchart. Each chart has its own address, so the browser's back and forward buttons work.
+- The top bar shows **Called by** and **Calls** links for the open chart.
+- Nodes that call charted functions are underlined. Click a node to select it: its source lines are highlighted and the strip above the chart lists its calls. Double-click it to open the callee when it calls exactly one charted function.
+- Click a source line to select the node that covers it. If the line belongs to another function, a "go to" link opens that one. The source pane can be collapsed.
+- Drag to pan and use the mouse wheel to zoom; the fit, + and − buttons reset and step the zoom.
+- Press `/` to search by function name or file path; arrow keys move through the matches and Enter opens one.
+- Light and dark mode follow the system setting.
 
 | Option | Meaning |
 |---|---|
@@ -116,9 +126,11 @@ uv run pyflowcharts explore a.py b.py --port 8765 --no-browser
 
 The server listens on `127.0.0.1` only and rejects requests for other host names. The printed URL carries a random token that is exchanged for a cookie (named per port, so two explorers can run side by side); requests without it get 403. Browsers send cookies to every server on `127.0.0.1`/`localhost` regardless of port, so other local servers you run can see the token cookie; it stays valid only while that explorer runs. Press Ctrl+C to stop.
 
-The explorer watches the files and directories you gave it. After you save a change it re-parses the whole run, so charts, calls and source stay current, and the browser updates itself ("reparsing" and "reconnecting" show in the top bar).
+The explorer watches the files and directories you gave it, including files added or deleted later. Within a second or two of saving a change, it re-parses the whole run, so charts, calls and source stay current, and the browser updates itself while keeping the selected node. The dot beside the search box is green when connected, yellow while re-parsing and red while reconnecting. A tab in the background closes its live connection and catches up when you return to it.
 
-Problems stay visible instead of stopping the run. A function skipped because of a syntax error is listed in the sidebar with a warning sign; opening it shows the message and highlights the line in the source. A file that cannot be read or decoded is listed with a warning sign too, and opening it shows the error. A file with nothing to chart is greyed out. The warnings counter in the sidebar lists everything. The explorer only refuses to start when nothing could be parsed and there were errors.
+Problems stay visible instead of stopping the run. A function skipped because of a syntax error is listed in the sidebar with a warning sign; opening it shows the message and highlights the line in the source. A file that cannot be read or decoded is listed with a warning sign too. Opening it shows the error, and so does any of its charts that you have open when the error appears. A file with nothing to chart is greyed out. If a file added while running would have the same name as an existing one, only the first is shown and a collision message explains why. The warnings counter in the sidebar lists everything.
+
+At startup the explorer exits with code 1 when nothing could be parsed and there were errors (a missing file, an unsupported type), when two inputs map to the same name, or when the port cannot be used; with code 2 when Graphviz is missing. A directory with no source files yet only gives a warning, and the explorer waits for files to appear.
 
 ## How code maps to the chart
 
