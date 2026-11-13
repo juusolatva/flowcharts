@@ -24,3 +24,6 @@ def assert_graph_integrity(chart: Chart) -> None:
     assert not any(":" in i for i in ids), chart.qualname
     known = set(ids)
     assert all(e.source in known and e.target in known for e in chart.edges), chart.qualname
+
+
+from explorer_helpers import running_server  # noqa: F401

@@ -21,10 +21,11 @@ from pyflowcharts.serialize import to_json
 
 EXTENSIONS = {"dot": "dot", "svg": "svg", "png": "png", "mermaid": "mmd"}
 
-GRAPHVIZ_MISSING = (
+GRAPHVIZ_NOT_FOUND = (
     "error: Graphviz 'dot' executable not found; install Graphviz "
-    "(e.g. 'sudo apt install graphviz') or use --format json dot mermaid"
+    "(e.g. 'sudo apt install graphviz')"
 )
+GRAPHVIZ_MISSING = GRAPHVIZ_NOT_FOUND + " or use --format json dot mermaid"
 
 
 class Writer:

@@ -19,6 +19,8 @@ uv run pytest tests/test_cli.py -v       # run one test file
 uv run ruff check                        # lint
 uv run ruff format                       # format
 uv run pyflowcharts PATH -o OUTDIR       # run the CLI (files or directories)
+uv run pyflowcharts explore PATH         # run the explorer (needs Graphviz)
+node --test 'tests/js/*.test.mjs'        # JavaScript tests (Node 24; quote the glob)
 ```
 
 SVG/PNG output needs the system Graphviz `dot` binary (`sudo apt install graphviz`). Tests that need it are skipped when it's missing.
@@ -37,17 +39,21 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 
 - `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `Chart`, `FunctionChart`, `Node`, `Edge`, `Call`, `CallRef`, …). This is the contract between frontends and backends.
 - `src/pyflowcharts/cfg/`: the language-neutral statement model (`Step`, `Branch`, `Loop`, `Try`, …) and the chart builder (frontier walk, node IDs, reveal rule, `finally` copies). Frontends produce the model; the builder produces nodes and edges.
-- `src/pyflowcharts/frontends/`: the `Frontend` protocol (`parse(source, path, options, key=None) -> ParseResult`, a document plus warnings; `key` is the output key the module name comes from) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning. `python/module.py` decides whether a file's top level does work and builds its module chart. `python/calls.py` finds each statement's calls and their candidate targets (scopes and imports).
+- `src/pyflowcharts/frontends/`: the `Frontend` protocol (`parse(source, path, options, key=None) -> ParseResult`, a document plus warnings and `source_text`, the decoded text the frontend charted, so nothing else decodes bytes; `key` is the output key the module name comes from) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning. `python/module.py` decides whether a file's top level does work and builds its module chart. `python/calls.py` finds each statement's calls and their candidate targets (scopes and imports).
 - `src/pyflowcharts/calls.py`: the language-neutral linker; sets each call's `target` against all documents of the run.
 - `src/pyflowcharts/backends/`: renderers that depend only on the IR. `callgraph.py` draws the run's call graph.
 - `src/pyflowcharts/inputs.py`: expands path arguments (directory walk, `--exclude`), deduplicates them, assigns each file its output key and checks for output collisions.
 - `src/pyflowcharts/output.py`: writes each document under its output key in the selected formats, and the call graph as `OUTDIR/callgraph.<ext>`.
-- `src/pyflowcharts/cli.py`: argument parsing, linking, `--function` selection, warnings and exit codes.
+- `src/pyflowcharts/pipeline.py`: `parse_all` parses and links the inputs of a run; shared by the CLI and the explorer. It prints nothing.
+- `src/pyflowcharts/cli_options.py`: the chart options, their validators and the exit codes, shared by the CLI and the explorer.
+- `src/pyflowcharts/cli.py`: argument parsing, `--function` selection, warnings and exit codes; `explore` hands over to the explorer.
+- `src/pyflowcharts/explorer/`: `pyflowcharts explore`, a local web app. `main.py` (arguments, startup), `workspace.py` (re-parses when files change, publishes immutable snapshots), `server.py` (127.0.0.1 only: Host check, token cookie, headers, routing, event stream), `api.py` (pure request-to-response logic for `/api/*`), `render.py` (DOT to SVG with `dot`), `assets.py` (the fixed table of static files). `static/lib/` holds pure ES modules (routing, search, call index, source map, SVG ids, drag, generation tracking) that Node tests import; `static/views/` holds the thin DOM glue. No npm, no build step.
 
 ## Rules
 
 **Layering**
 - Backends, the linker and the CLI must not import `ast`, tree-sitter or anything from `frontends/python/`. Language-specific logic lives only in its frontend.
+- `explorer/`, `pipeline.py` and `cli_options.py` follow the same rule as the CLI: no `ast`, tree-sitter or `frontends/python/`. The explorer serves on `127.0.0.1` only and never lets a request path reach the file system.
 - `cfg/` must not import tree-sitter or anything from `frontends/`. It knows nothing about Python.
 - Adding a language means adding a frontend module that produces `cfg.model` statements and registering its extensions. No backend or `cfg/` changes should be needed.
 
@@ -66,7 +72,8 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - Test-driven: write the failing test first, then the implementation.
 - CFG tests assert on `flow(chart)` (a set of `(source_label, target_label, edge_label)` triples, from `tests/conftest.py`) rather than on node IDs or ordering.
 - Every new statement type, CLI flag or error path gets a test. Bug fixes start with a test that reproduces the bug.
-- `uv run pytest` and `uv run ruff check` must both pass before committing.
+- Front-end logic goes in `explorer/static/lib/` as pure modules with `node --test` tests in `tests/js/`; `views/` stays thin DOM glue without logic worth testing.
+- `uv run pytest`, `uv run ruff check`, `uv run ruff format --check` and `node --test 'tests/js/*.test.mjs'` must all pass before committing.
 
 **Git**
 - Never commit directly to `main`. Work on a feature branch (`feat/…`, `fix/…`).

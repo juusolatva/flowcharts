@@ -1,0 +1,98 @@
+:root {
+  color-scheme: light dark;
+  --bg: #ffffff;
+  --panel: #f6f7f9;
+  --fg: #1d2330;
+  --muted: #6b7280;
+  --border: #d5d9e0;
+  --accent: #1a73e8;
+  --hl: #fff3b0;
+  --node-fill: #ffffff;
+  --node-stroke: #1d2330;
+  --edge: #1d2330;
+  --cluster-fill: #f6f7f9;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #14171c;
+    --panel: #1b1f26;
+    --fg: #e4e7ec;
+    --muted: #8b93a1;
+    --border: #2d333d;
+    --accent: #6ea8fe;
+    --hl: #4a4420;
+    --node-fill: #232932;
+    --node-stroke: #aab2c0;
+    --edge: #aab2c0;
+    --cluster-fill: #1b1f26;
+  }
+  svg g.graph > polygon { fill: var(--bg); stroke: none; }
+  svg .cluster polygon { fill: var(--cluster-fill); stroke: var(--border); }
+  svg .node polygon, svg .node ellipse, svg .node path { fill: var(--node-fill); stroke: var(--node-stroke); }
+  svg .edge path { stroke: var(--edge); }
+  svg .edge polygon { fill: var(--edge); stroke: var(--edge); }
+  svg text { fill: var(--fg); }
+}
+
+* { box-sizing: border-box; }
+html, body { height: 100%; margin: 0; }
+body { background: var(--bg); color: var(--fg); font: 14px/1.4 system-ui, sans-serif; }
+a { color: var(--accent); text-decoration: none; }
+a:hover { text-decoration: underline; }
+button, input { font: inherit; color: inherit; background: var(--panel); border: 1px solid var(--border); border-radius: 4px; }
+button { cursor: pointer; padding: 2px 8px; }
+.muted { color: var(--muted); }
+
+#layout { display: grid; grid-template-columns: 260px minmax(0, 1fr) 360px; height: 100%; }
+#layout.source-collapsed { grid-template-columns: 260px minmax(0, 1fr) 32px; }
+#layout.source-collapsed #source-title,
+#layout.source-collapsed #source-hint,
+#layout.source-collapsed #source-lines { display: none; }
+
+#sidebar, #source-pane { background: var(--panel); display: flex; flex-direction: column; min-height: 0; }
+#sidebar { border-right: 1px solid var(--border); }
+#source-pane { border-left: 1px solid var(--border); }
+#sidebar-head { display: flex; gap: 8px; align-items: center; padding: 8px; }
+#search { flex: 1; min-width: 0; padding: 4px 8px; }
+#status { width: 10px; height: 10px; border-radius: 50%; background: #999; }
+#status[data-state="connected"] { background: #2e9d4f; }
+#status[data-state="reparsing"] { background: #e0a100; }
+#status[data-state="reconnecting"] { background: #d33; }
+
+#tree { flex: 1; overflow: auto; padding: 0 8px; }
+#tree ul { list-style: none; margin: 0; padding-left: 14px; }
+#tree > ul { padding-left: 0; }
+#tree summary { cursor: pointer; }
+#tree .file { font-weight: 600; }
+#tree .file.empty { opacity: 0.5; font-weight: normal; }
+#tree .skipped, #tree .file-error { color: var(--muted); }
+#tree a { display: block; border-radius: 3px; padding: 0 4px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#tree a.active { background: var(--hl); color: var(--fg); }
+#warnings { border-top: 1px solid var(--border); padding: 6px 8px; max-height: 35%; overflow: auto; font-size: 12px; }
+#warnings p { margin: 4px 0; overflow-wrap: anywhere; }
+
+#main { display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; }
+#topbar { display: flex; flex-wrap: wrap; gap: 8px 12px; align-items: center; padding: 6px 10px; border-bottom: 1px solid var(--border); }
+#calls { display: flex; gap: 16px; flex-wrap: wrap; margin-left: auto; font-size: 13px; }
+#details { display: flex; flex-wrap: wrap; gap: 4px 14px; padding: 0 10px; font-size: 13px; }
+#details:not(:empty) { padding-block: 4px; border-bottom: 1px solid var(--border); }
+#stage { flex: 1; min-height: 0; overflow: hidden; }
+#stage svg { width: 100%; height: 100%; display: block; cursor: grab; touch-action: none; user-select: none; }
+#zoom { position: absolute; right: 12px; bottom: 12px; display: flex; gap: 4px; }
+.notice { padding: 24px; max-width: 60ch; }
+.notice a { margin-right: 12px; }
+
+svg .node polygon, svg .node ellipse, svg .node path { pointer-events: all; }
+svg .node { cursor: pointer; }
+svg .node.selected polygon, svg .node.selected ellipse, svg .node.selected path { stroke: var(--accent); stroke-width: 3; }
+svg .node.has-call text { text-decoration: underline; }
+
+#source-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+#source-title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#source-hint:not(:empty) { padding: 4px 8px; border-bottom: 1px solid var(--border); }
+#source-lines { flex: 1; overflow: auto; font: 12px/1.5 ui-monospace, monospace; }
+#source-lines .muted { padding: 8px; font-family: system-ui, sans-serif; }
+.line { display: flex; cursor: pointer; white-space: pre; }
+.line .num { flex: none; width: 4ch; padding-right: 1ch; text-align: right; color: var(--muted); user-select: none; }
+.line.hl { background: var(--hl); }

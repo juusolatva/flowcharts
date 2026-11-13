@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>pyflowcharts explorer</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div id="layout">
+  <aside id="sidebar" aria-label="Files and functions">
+    <div id="sidebar-head">
+      <input id="search" type="search" placeholder="Search ( / )" autocomplete="off" aria-label="Search charts">
+      <span id="status" data-state="reconnecting" title="reconnecting"></span>
+    </div>
+    <nav id="tree" aria-label="File tree"></nav>
+    <footer id="warnings"></footer>
+  </aside>
+  <main id="main">
+    <header id="topbar">
+      <button id="back" type="button" title="Back" aria-label="Back">‹</button>
+      <button id="forward" type="button" title="Forward" aria-label="Forward">›</button>
+      <nav id="crumbs" aria-label="Breadcrumb"></nav>
+      <div id="calls"></div>
+    </header>
+    <div id="details"></div>
+    <div id="stage"></div>
+    <div id="zoom">
+      <button id="fit" type="button">fit</button>
+      <button id="zoom-in" type="button" aria-label="Zoom in">+</button>
+      <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
+    </div>
+  </main>
+  <aside id="source-pane" aria-label="Source">
+    <div id="source-head">
+      <span id="source-title"></span>
+      <button id="source-toggle" type="button" title="Collapse source" aria-label="Collapse source">›</button>
+    </div>
+    <div id="source-hint"></div>
+    <div id="source-lines"></div>
+  </aside>
+</div>
+<script type="module" src="/static/views/app.mjs"></script>
+</body>
+</html>

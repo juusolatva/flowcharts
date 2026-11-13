@@ -6,15 +6,21 @@ import argparse
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from pyflowcharts import __version__
-from pyflowcharts.calls import link
-from pyflowcharts.frontends import SourceError, frontend_for_path
+from pyflowcharts.cli_options import (
+    EXIT_ERROR,
+    EXIT_NO_GRAPHVIZ,
+    EXIT_OK,
+    add_chart_options,
+    chart_options,
+)
 from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.inputs import Input, collision_error, expand
-from pyflowcharts.ir import MODULE_QUALNAME, ChartOptions
+from pyflowcharts.ir import MODULE_QUALNAME
 from pyflowcharts.output import Writer
+from pyflowcharts.pipeline import parse_all
 
 FORMATS = ("json", "dot", "svg", "png", "mermaid")
 DEFAULT_FORMATS = ["svg", "json"]
@@ -24,26 +30,19 @@ CALLGRAPH_RESERVED = (
     "or pass --no-call-graph"
 )
 
-EXIT_OK = 0
-EXIT_ERROR = 1
-EXIT_NO_GRAPHVIZ = 2
-
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
-    formats = list(dict.fromkeys(args.format))  # de-duplicate, keep order
-    expansion = expand(args.paths, args.exclude)
-    # The key is only taken when a picture will actually be written.
-    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
-    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
-    if (collision := collision_error(expansion.inputs, reserved)) is not None:
-        print(collision, file=sys.stderr)
-        return EXIT_ERROR
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw and raw[0] == "explore":
+        from pyflowcharts.explorer import main as explore
 
-    for message in expansion.warnings + expansion.errors:
-        print(message, file=sys.stderr)
-    results, parsed_ok = _parse_all(expansion.inputs, _options(args))
-    ok = parsed_ok and not expansion.errors
+        return explore(raw[1:])
+    args = _parser().parse_args(raw)
+    formats = list(dict.fromkeys(args.format))  # de-duplicate, keep order
+    parsed = _expand_and_parse(args, formats)
+    if parsed is None:
+        return EXIT_ERROR
+    results, ok = parsed
 
     # Decided on the full result, so a file that only lacks the requested functions is quiet.
     empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
@@ -65,34 +64,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     return EXIT_NO_GRAPHVIZ if writer.graphviz_missing else EXIT_OK
 
 
-def _options(args: argparse.Namespace) -> ChartOptions:
-    return ChartOptions(
-        show_variables=args.variables,
-        show_parameters=not args.no_parameters,
-        show_returns=not args.no_returns,
-        max_label_length=args.max_label,
-        show_module=not args.no_module,
-    )
+def _expand_and_parse(
+    args: argparse.Namespace, formats: list[str]
+) -> tuple[list[tuple[Input, ParseResult]], bool] | None:
+    """Expand the paths and parse them, printing the messages on the way.
 
+    Returns the linked results and whether everything was read, or ``None`` on an output
+    name collision.
+    """
+    expansion = expand(args.paths, args.exclude)
+    # The key is only taken when a picture will actually be written.
+    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
+    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
+    if (collision := collision_error(expansion.inputs, reserved)) is not None:
+        print(collision, file=sys.stderr)
+        return None
 
-def _parse_all(
-    inputs: list[Input], options: ChartOptions
-) -> tuple[list[tuple[Input, ParseResult]], bool]:
-    """Parse every input and link the calls across the run. The flag is ``False`` when a
-    file could not be read (already reported)."""
-    ok = True
-    results: list[tuple[Input, ParseResult]] = []
-    for item in inputs:
-        try:
-            results.append((item, _parse_file(item.path, options, item.key)))
-        except SourceError as err:
-            print(err, file=sys.stderr)
-            ok = False
-    linked = link([result.document for _, result in results])
-    return [
-        (item, replace(result, document=doc))
-        for (item, result), doc in zip(results, linked, strict=True)
-    ], ok
+    for message in expansion.warnings + expansion.errors:
+        print(message, file=sys.stderr)
+    parsed = parse_all(expansion.inputs, chart_options(args))
+    for message in parsed.read_errors:
+        print(message, file=sys.stderr)
+    return parsed.results, not parsed.read_errors and not expansion.errors
 
 
 def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
@@ -116,7 +109,10 @@ def _nothing_to_chart(result: ParseResult) -> bool:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pyflowcharts",
-        description="Generate a control-flow flowchart for every function in Python files.",
+        description=(
+            "Generate a control-flow flowchart for every function in Python files. "
+            "Run 'pyflowcharts explore PATH…' to browse the charts in a local web app."
+        ),
         epilog=(
             "Put input paths before options that take several values (-f, --function, --exclude)."
         ),
@@ -141,14 +137,6 @@ def _parser() -> argparse.ArgumentParser:
         metavar="FORMAT",
         help=f"one or more of: {', '.join(FORMATS)} (default: svg json)",
     )
-    parser.add_argument("--variables", action="store_true", help="show plain variable assignments")
-    parser.add_argument(
-        "--no-parameters", action="store_true", help="hide parameters in the start node"
-    )
-    parser.add_argument(
-        "--no-returns", action="store_true", help="hide returned values in return nodes"
-    )
-    parser.add_argument("--no-module", action="store_true", help="never chart module-level code")
     parser.add_argument(
         "--no-call-graph", action="store_true", help="do not write the run's call graph picture"
     )
@@ -159,42 +147,9 @@ def _parser() -> argparse.ArgumentParser:
         metavar="QUALNAME",
         help="only chart these functions (e.g. 'load' or 'Inventory.find'); repeatable",
     )
-    parser.add_argument(
-        "--exclude",
-        nargs="+",
-        action="extend",
-        default=[],
-        type=_exclude_pattern,
-        metavar="GLOB",
-        help="skip matching files and directories when walking a directory; a pattern "
-        "without '/' matches names, one with '/' the relative path, and a trailing '/' "
-        "matches directories only; repeatable",
-    )
-    parser.add_argument(
-        "--max-label",
-        type=_positive_int,
-        default=ChartOptions().max_label_length,
-        metavar="N",
-        help="truncate node labels to N characters (default: 60)",
-    )
+    add_chart_options(parser)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
-
-
-def _exclude_pattern(text: str) -> str:
-    if text.rstrip("/") == "":
-        raise argparse.ArgumentTypeError(f"must name a file or directory, got {text!r}")
-    return text
-
-
-def _positive_int(text: str) -> int:
-    try:
-        value = int(text)
-    except ValueError:
-        value = 0
-    if value < 1:
-        raise argparse.ArgumentTypeError(f"must be a positive integer, got {text!r}")
-    return value
 
 
 def _select(
@@ -229,16 +184,5 @@ def _select(
             module=doc.module if MODULE_QUALNAME in wanted else None,
         )
         warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
-        selected.append((item, ParseResult(document, warnings)))
+        selected.append((item, replace(result, document=document, warnings=warnings)))
     return selected
-
-
-def _parse_file(path: Path, options: ChartOptions, key: PurePosixPath) -> ParseResult:
-    frontend = frontend_for_path(path)
-    try:
-        source = path.read_bytes()
-    except FileNotFoundError:
-        raise SourceError(str(path), "no such file") from None
-    except OSError as err:
-        raise SourceError(str(path), err.strerror or str(err)) from None
-    return frontend.parse(source, str(path), options, key)

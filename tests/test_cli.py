@@ -1,11 +1,12 @@
 import shutil
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import graphviz
 import pytest
 
 from pyflowcharts.cli import main
 from pyflowcharts.frontends.python import PythonFrontend
+from pyflowcharts.inputs import Input
 from pyflowcharts.ir import ChartOptions
 from pyflowcharts.serialize import from_json
 
@@ -377,3 +378,12 @@ def test_callgraph_key_free_when_no_picture_is_written(tmp_path):
     src = write(tmp_path, "callgraph.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
     assert (tmp_path / "o/callgraph.json").exists()
+
+
+def test_select_keeps_source_text(tmp_path):
+    from pyflowcharts.cli import _select
+
+    src = write(tmp_path, "m.py", "def f():\n    pass\n\ndef g():\n    pass\n")
+    result = PythonFrontend().parse(src.read_bytes(), str(src), ChartOptions())
+    selected = _select([(Input(src, PurePosixPath("m"), explicit=True), result)], ["g"])
+    assert selected[0][1].source_text == result.source_text

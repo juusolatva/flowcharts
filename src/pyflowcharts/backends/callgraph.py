@@ -3,13 +3,13 @@ caller → callee pair."""
 
 from __future__ import annotations
 
-from collections import Counter
 from dataclasses import dataclass
 from typing import Literal
 
 import graphviz
 
 from pyflowcharts.backends.mermaid import escape
+from pyflowcharts.calls import resolved_edges
 from pyflowcharts.ir import Chart, Document
 
 type _Key = tuple[int, str]  # (document index, chart qualname)
@@ -25,7 +25,7 @@ class _Cluster:
 def _layout(documents: list[Document]) -> tuple[list[_Cluster], list[tuple[_Key, _Key]]]:
     """Clusters for the documents that have charts, and the sorted, deduplicated edges
     between drawn charts."""
-    return _clusters(documents), _edges(documents)
+    return _clusters(documents), resolved_edges(documents)
 
 
 def _charts(doc: Document) -> list[Chart]:
@@ -39,27 +39,6 @@ def _clusters(documents: list[Document]) -> list[_Cluster]:
         for i, doc in enumerate(documents)
         if (charts := _charts(doc))
     ]
-
-
-def _edges(documents: list[Document]) -> list[tuple[_Key, _Key]]:
-    # The linker's index rule: no empty and no shared module names.
-    names = Counter(doc.module_name for doc in documents)
-    drawn = {
-        (doc.module_name, chart.qualname): (i, chart.qualname)
-        for i, doc in enumerate(documents)
-        if doc.module_name and names[doc.module_name] == 1
-        for chart in doc.functions
-    }
-    edges: set[tuple[_Key, _Key]] = set()
-    for i, doc in enumerate(documents):
-        for chart in _charts(doc):
-            targets = (
-                drawn.get((call.target.module, call.target.qualname))
-                for call in chart.calls
-                if call.target is not None
-            )
-            edges.update(((i, chart.qualname), t) for t in targets if t is not None)
-    return sorted(edges)
 
 
 def _dot_id(key: _Key) -> str:
