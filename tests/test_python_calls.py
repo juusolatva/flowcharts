@@ -159,3 +159,171 @@ def test_await_and_async_with_calls():  # Review Focus 2
 def test_same_function_nested_gives_two_calls():  # Review Focus 3
     d = doc_of("def f(x):\n    g(g(x))\n")
     assert owned(fn(d, "f")) == [("g(g(x))", "g"), ("g(g(x))", "g")]
+
+
+def cands(src, qualname, text, key="pkg/mod"):
+    d = doc_of(src, key=key)
+    chart = d.module if qualname == "<module>" else fn(d, qualname)
+    call = next(c for c in chart.calls if c.text == text)
+    return [(r.module, r.qualname) for r in call.candidates]
+
+
+TRY_IMPORTS = """\
+try:
+    from a import g
+except ImportError:
+    from b import g
+    from a import g
+def f():
+    g()
+"""
+
+
+@pytest.mark.parametrize(
+    "src, qualname, text, expected",
+    [
+        # bare names: innermost scope first; the owning chart's own scope first
+        ("def h(): pass\ndef f():\n    def h(): pass\n    h()\n", "f", "h", [("pkg.mod", "f.h")]),
+        (
+            "def f():\n    def g():\n        h()\n    def h(): pass\n",
+            "f.g",
+            "h",
+            [("pkg.mod", "f.h")],
+        ),
+        ("def f():\n    g()\ndef g(): pass\n", "f", "g", [("pkg.mod", "g")]),  # Review Focus 4
+        # class scope invisible
+        ("class C:\n    def h(self): pass\n    def m(self):\n        h()\n", "C.m", "h", []),
+        ("class C: pass\ndef f():\n    C()\n", "f", "C", [("pkg.mod", "C.__init__")]),
+        ("from a.b import g\ndef f():\n    g()\n", "f", "g", [("a.b", "g"), ("a.b", "g.__init__")]),
+        ("from a import g as k\ndef f():\n    k()\n", "f", "k", [("a", "g"), ("a", "g.__init__")]),
+        ("import os as g\ndef f():\n    g()\n", "f", "g", []),
+        ("def f():\n    print(len(x))\n", "f", "print", []),
+        # local import shadows module-level def and module-level import
+        (
+            "def foo(): pass\ndef bar():\n    from other import foo\n    foo()\n",
+            "bar",
+            "foo",
+            [("other", "foo"), ("other", "foo.__init__")],
+        ),
+        (
+            "from first import foo\ndef bar():\n    from other import foo\n    foo()\n",
+            "bar",
+            "foo",
+            [("other", "foo"), ("other", "foo.__init__")],
+        ),
+        # try/except bindings both count, deduplicated
+        (TRY_IMPORTS, "f", "g", [("a", "g"), ("a", "g.__init__"), ("b", "g"), ("b", "g.__init__")]),
+        # self / cls, including a class nested in a function
+        ("class C:\n    def m(self):\n        self.o()\n", "C.m", "self.o", [("pkg.mod", "C.o")]),
+        (
+            "class C:\n    @classmethod\n    def m(cls):\n        cls.o()\n",
+            "C.m",
+            "cls.o",
+            [("pkg.mod", "C.o")],
+        ),
+        (
+            "def outer():\n    class C:\n        def m(self):\n            self.o()\n",
+            "outer.C.m",
+            "self.o",
+            [("pkg.mod", "outer.C.o")],
+        ),
+        ("class C:\n    def m(self):\n        self.x.o()\n", "C.m", "self.x.o", []),
+        # Class.method: local, enclosing-function, imported
+        ("class C:\n    def s(): pass\ndef f():\n    C.s()\n", "f", "C.s", [("pkg.mod", "C.s")]),
+        (
+            "def outer():\n    class C:\n        def s(): pass\n    C.s()\n",
+            "outer",
+            "C.s",
+            [("pkg.mod", "outer.C.s")],
+        ),
+        ("from m import C\ndef f():\n    C.s()\n", "f", "C.s", [("m.C", "s"), ("m", "C.s")]),
+        # module imports
+        ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
+        ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),
+        ("import x.y as z\ndef f():\n    z.C.m()\n", "f", "z.C.m", [("x.y", "C.m")]),
+        ("import x.y as z\ndef f():\n    x.g()\n", "f", "x.g", []),
+        ("from p import x as a\ndef f():\n    a.g()\n", "f", "a.g", [("p.x", "g"), ("p", "x.g")]),
+        (
+            "from __future__ import annotations\nfrom m import *\ndef f():\n    annotations()\n",
+            "f",
+            "annotations",
+            [],
+        ),
+        ("def f():\n    g()().h()\n", "f", "g()().h", []),
+        ("import x.y\ndef f():\n    x.y()\n", "f", "x.y", []),  # proper prefixes only
+        (
+            "class C:\n    def m(self):\n        def inner():\n            self.o()\n",
+            "C.m.inner",
+            "self.o",
+            [],
+        ),
+        # function-local import is scoped to that function
+        ("def a():\n    from m import g\ndef b():\n    g()\n", "b", "g", []),
+        # the owning node decides the scope chain: a default runs in outer
+        (
+            "def outer():\n    def helper(): pass\n    def inner(x=helper()): pass\n",
+            "outer",
+            "helper",
+            [("pkg.mod", "outer.helper")],
+        ),
+        # a skipped (syntax error) nested function still gives its candidate, no outer fallback
+        (
+            "def helper(): pass\ndef f():\n    def helper(:\n        pass\n    helper()\n",
+            "f",
+            "helper",
+            [("pkg.mod", "f.helper")],
+        ),
+        # a definition and an import in one scope: definition first, then imports
+        (
+            "from m import g\ndef g(): pass\ndef f():\n    g()\n",
+            "f",
+            "g",
+            [("pkg.mod", "g"), ("m", "g"), ("m", "g.__init__")],
+        ),
+    ],
+)
+def test_resolution(src, qualname, text, expected):
+    assert cands(src, qualname, text) == expected
+
+
+@pytest.mark.parametrize(
+    "key, src, expected",
+    [
+        ("pkg/io/load", "from . import x\nx.f()\n", [("pkg.io.x", "f"), ("pkg.io", "x.f")]),
+        (
+            "pkg/io/load",
+            "from .util import g\ng()\n",
+            [("pkg.io.util", "g"), ("pkg.io.util", "g.__init__")],
+        ),
+        (
+            "pkg/io/load",
+            "from ..core import g\ng()\n",
+            [("pkg.core", "g"), ("pkg.core", "g.__init__")],
+        ),
+        (
+            "pkg/io/__init__",
+            "from .util import g\ng()\n",
+            [("pkg.io.util", "g"), ("pkg.io.util", "g.__init__")],
+        ),
+        ("pkg/io/load", "from ... import g\ng()\n", []),  # above the top
+        ("a", "from . import g\ng()\n", []),  # top-level file has no package
+    ],
+)
+def test_relative_imports(key, src, expected):
+    call = doc_of(src, key=key).module.calls[0]
+    assert [(r.module, r.qualname) for r in call.candidates] == expected
+
+
+def test_empty_module_name_gives_no_own_candidates():
+    d = doc_of("def g(): pass\nfrom m import h\ng()\nh()\n", key="__init__")
+    assert [[(r.module, r.qualname) for r in c.candidates] for c in d.module.calls] == [
+        [],
+        [("m", "h"), ("m", "h.__init__")],
+    ]
+
+
+def test_skipped_function_case_is_really_skipped():
+    src = "def helper(): pass\ndef f():\n    def helper(:\n        pass\n    helper()\n"
+    r = PythonFrontend().parse(src.encode(), "t.py", ChartOptions(), PurePosixPath("pkg/mod"))
+    assert [w.qualname for w in r.warnings] == ["f.helper"]
+    assert "f" in [c.qualname for c in r.document.functions]
