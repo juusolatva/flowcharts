@@ -5,6 +5,7 @@ from __future__ import annotations
 import hmac
 import sys
 import threading
+import traceback
 from collections.abc import Callable
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -84,6 +85,8 @@ def watch(
             message = f"error: refresh failed: {exc}"
             if message != last_error:
                 log(message)
+                if not isinstance(exc, OSError):  # unexpected: show where it came from
+                    log(traceback.format_exc().rstrip())
             last_error = message
         else:
             last_error = None

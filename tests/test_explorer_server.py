@@ -398,3 +398,16 @@ def test_watch_logs_a_changed_error_message():
     lines: list[str] = []
     watch(Failing(), FakeServer(), OneLoopStop(2), log=lines.append)
     assert lines == ["error: refresh failed: denied", "error: refresh failed: gone"]
+
+
+def test_watch_logs_a_traceback_for_unexpected_errors():
+    class Broken:
+        def refresh(self) -> bool:
+            raise RuntimeError("boom")
+
+    lines: list[str] = []
+    watch(Broken(), FakeServer(), OneLoopStop(2), log=lines.append)
+    assert lines[0] == "error: refresh failed: boom"
+    assert len(lines) == 2  # the repeat is not logged again
+    assert lines[1].startswith("Traceback")
+    assert "RuntimeError: boom" in lines[1]
