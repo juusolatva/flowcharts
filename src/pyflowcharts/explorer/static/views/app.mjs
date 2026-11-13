@@ -29,7 +29,9 @@ let live = "reconnecting";
 let failed = false;
 
 function paintStatus() {
-  const value = busy ? "reparsing" : failed ? "reconnecting" : live;
+  let value = live;
+  if (busy) value = "reparsing";
+  else if (failed) value = "reconnecting";
   $("status").dataset.state = value;
   $("status").title = value === "reparsing" ? "re-parsing" : value;
 }
@@ -42,7 +44,7 @@ const api = createApi({
       state = newState;
       index = buildCallIndex(newState);
       sidebar.render(newState, route);
-      show();
+      void show(); // show() reports its own errors
     } catch (error) {
       console.error(error);
       notice(`Could not draw the explorer: ${error.message}`);
@@ -181,7 +183,7 @@ window.addEventListener("hashchange", () => {
   route = parseHash(location.hash);
   selected = null;
   sidebar.setRoute(route);
-  show();
+  void show(); // show() reports its own errors
 });
 document.addEventListener("keydown", (event) => {
   if (!opensSearch(event)) return;

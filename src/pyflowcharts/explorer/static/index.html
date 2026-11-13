@@ -8,19 +8,19 @@
 </head>
 <body>
 <div id="layout">
-  <aside id="sidebar">
+  <aside id="sidebar" aria-label="Files and functions">
     <div id="sidebar-head">
       <input id="search" type="search" placeholder="Search ( / )" autocomplete="off" aria-label="Search charts">
       <span id="status" data-state="reconnecting" title="reconnecting"></span>
     </div>
-    <nav id="tree"></nav>
+    <nav id="tree" aria-label="File tree"></nav>
     <footer id="warnings"></footer>
   </aside>
   <main id="main">
     <header id="topbar">
       <button id="back" type="button" title="Back" aria-label="Back">‹</button>
       <button id="forward" type="button" title="Forward" aria-label="Forward">›</button>
-      <nav id="crumbs"></nav>
+      <nav id="crumbs" aria-label="Breadcrumb"></nav>
       <div id="calls"></div>
     </header>
     <div id="details"></div>
@@ -31,7 +31,7 @@
       <button id="zoom-out" type="button" aria-label="Zoom out">−</button>
     </div>
   </main>
-  <aside id="source-pane">
+  <aside id="source-pane" aria-label="Source">
     <div id="source-head">
       <span id="source-title"></span>
       <button id="source-toggle" type="button" title="Collapse source" aria-label="Collapse source">›</button>

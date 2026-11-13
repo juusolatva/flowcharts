@@ -9,8 +9,12 @@ const SEPARATOR = " › ";
 export function renderCrumbs(root, route, entry) {
   const parts = [link("Call graph", formatHash({ view: "callgraph" }))];
   if (route.view === "chart") {
-    parts.push(el("span", { text: SEPARATOR }), el("span", { text: route.key }));
-    parts.push(el("span", { text: SEPARATOR }), el("strong", { text: route.qualname }));
+    parts.push(
+      el("span", { text: SEPARATOR }),
+      el("span", { text: route.key }),
+      el("span", { text: SEPARATOR }),
+      el("strong", { text: route.qualname }),
+    );
   } else if (route.view === "file") {
     const label = entry ? entry.key : route.key;
     parts.push(el("span", { text: SEPARATOR }), el("strong", { text: label }));
