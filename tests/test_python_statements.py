@@ -71,6 +71,15 @@ def test_if_elif_located_at_elif():
         ("case y if g:", False),
         ("case [a]:", False),
         ("case 1, 2:", False),
+        ("case _ as y:", True),
+        ("case y as z:", True),
+        ("case (2 | y) as z:", True),
+        ("case [a] as y:", False),
+        ("case 2 | _:", True),
+        ("case 2 | y:", True),
+        ("case [a] | y:", True),
+        ("case 2 | 3:", False),
+        ("case 2 | _ if g:", False),
     ],
 )
 def test_match_irrefutable_last_case(case, irrefutable):
