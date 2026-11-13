@@ -9,7 +9,7 @@
 
 `pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Each run also draws a **call graph** of the charted functions, clustered by file. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
 
-The JSON output (schema version 3) is the stable, machine-readable format. It holds the full graph, source locations and every call with its resolved target, and is meant for other tools, such as a future GUI explorer.
+The JSON output (schema version 3) is the stable, machine-readable format. It holds the full graph, source locations and every call with its resolved target, and is meant for other tools, such as the explorer.
 
 ## Installation
 
@@ -95,6 +95,30 @@ A parameter named like a function hides it, as in Python. Not resolved: shadowin
 | 1 | A function was skipped because of a syntax error (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
+## Exploring
+
+```bash
+uv run pyflowcharts explore src/                  # browse a tree in the browser
+uv run pyflowcharts explore a.py b.py --port 8765 --no-browser
+```
+
+`explore` parses the given files or directories, starts a local web app and opens it in your browser (the URL is also printed). It shows the call graph, the flowchart of every function and module with the source beside it, and lets you search for functions, follow calls from node to node and see the source lines of a node highlighted. It needs the Graphviz `dot` executable, since the server draws the charts: without it the command exits with code 2.
+
+| Option | Meaning |
+|---|---|
+| `--port N` | Port to listen on, 0 to 65535 (default 0, a free port) |
+| `--no-browser` | Only print the URL |
+| `--variables`, `--no-parameters`, `--no-returns`, `--no-module`, `--max-label N` | As for charting |
+| `--exclude GLOB ...` | As for charting; put the input paths before it |
+
+`-o`, `-f`, `--function` and `--no-call-graph` do not exist here. A file literally named `explore` must be passed as `./explore`.
+
+The server listens on `127.0.0.1` only and rejects requests for other host names. The printed URL carries a random token that is exchanged for a cookie (named per port, so two explorers can run side by side); requests without it get 403. Press Ctrl+C to stop.
+
+The explorer watches the files and directories you gave it. After you save a change it re-parses the whole run, so charts, calls and source stay current, and the browser updates itself ("reparsing" and "reconnecting" show in the top bar).
+
+Problems stay visible instead of stopping the run. A function skipped because of a syntax error is listed in the sidebar with a warning sign; opening it shows the message and highlights the line in the source. A file that cannot be read or decoded is listed with a warning sign too, and opening it shows the error. A file with nothing to chart is greyed out. The warnings counter in the sidebar lists everything. The explorer only refuses to start when nothing could be parsed and there were errors.
+
 ## How code maps to the chart
 
 | Shape | Used for |
@@ -122,6 +146,7 @@ A function that does not parse is skipped with a warning such as `mod.py:12: war
 
 ```bash
 uv run pytest          # tests
+node --test 'tests/js/*.test.mjs'   # explorer front-end tests (Node 24, no npm packages)
 uv run ruff check      # lint
 uv run ruff format     # format
 ```
