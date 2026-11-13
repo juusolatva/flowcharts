@@ -2,6 +2,7 @@ from pathlib import PurePosixPath
 
 import graphviz
 
+from pyflowcharts.calls import link
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
 from pyflowcharts.output import Writer
@@ -9,6 +10,11 @@ from pyflowcharts.output import Writer
 
 def parse(text: str):
     return PythonFrontend().parse(text.encode(), "t.py", ChartOptions()).document
+
+
+def parse_as(text: str, key: str):
+    options = ChartOptions()
+    return PythonFrontend().parse(text.encode(), f"{key}.py", options, PurePosixPath(key)).document
 
 
 def files(root):
@@ -59,3 +65,14 @@ def test_unwritable_directory_reported_once(tmp_path, capsys):
     w = Writer(blocker, ["json", "mermaid"])
     w.write(parse("def f(): pass\ndef g(): pass\nmain()\n"), PurePosixPath("m"))
     assert w.write_failed and capsys.readouterr().err.count("cannot write") == 1
+
+
+def test_write_callgraph(tmp_path):
+    docs = link([parse_as("def f():\n    f()\n", "a")])
+    Writer(tmp_path, ["json", "dot", "mermaid"]).write_callgraph(docs)
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["callgraph.dot", "callgraph.mmd"]
+
+
+def test_no_callgraph_without_charts(tmp_path):
+    Writer(tmp_path / "o", ["dot"]).write_callgraph([parse_as("", "a")])
+    assert not (tmp_path / "o").exists()

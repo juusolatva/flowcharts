@@ -7,6 +7,8 @@ import json
 from typing import Any
 
 from pyflowcharts.ir import (
+    Call,
+    CallRef,
     Chart,
     Document,
     Edge,
@@ -18,7 +20,7 @@ from pyflowcharts.ir import (
     SourceLocation,
 )
 
-SUPPORTED_VERSIONS = (1, 2)
+SUPPORTED_VERSIONS = (1, 2, 3)
 
 
 class UnsupportedSchemaVersionError(ValueError):
@@ -34,13 +36,14 @@ def from_json(text: str) -> Document:
     version = data.get("schema_version")
     if version not in SUPPORTED_VERSIONS:
         raise UnsupportedSchemaVersionError(
-            f"unsupported schema_version {version!r} (expected 1 or 2)"
+            f"unsupported schema_version {version!r} (expected 1, 2 or 3)"
         )
     module = data.get("module")  # absent in version 1
     return Document(
         source=data["source"],
         language=data["language"],
         functions=[_function_chart(c) for c in data["functions"]],
+        module_name=data.get("module_name", ""),  # absent before version 3
         module=None if module is None else _module_chart(module),
         schema_version=version,
     )
@@ -56,6 +59,7 @@ def _module_chart(data: dict[str, Any]) -> Chart:
         location=SourceLocation(**data["location"]),
         nodes=_nodes(data),
         edges=_edges(data),
+        calls=_calls(data),
     )
 
 
@@ -65,6 +69,7 @@ def _function_chart(data: dict[str, Any]) -> FunctionChart:
         location=SourceLocation(**data["location"]),
         nodes=_nodes(data),
         edges=_edges(data),
+        calls=_calls(data),
         name=data["name"],
         is_async=data["is_async"],
         parameters=[
@@ -84,3 +89,16 @@ def _nodes(data: dict[str, Any]) -> list[Node]:
 
 def _edges(data: dict[str, Any]) -> list[Edge]:
     return [Edge(e["source"], e["target"], e["label"]) for e in data["edges"]]
+
+
+def _calls(data: dict[str, Any]) -> list[Call]:
+    """A chart's calls; absent before version 3."""
+    return [
+        Call(
+            c["node"],
+            c["text"],
+            [CallRef(**ref) for ref in c["candidates"]],
+            None if c["target"] is None else CallRef(**c["target"]),
+        )
+        for c in data.get("calls", [])
+    ]

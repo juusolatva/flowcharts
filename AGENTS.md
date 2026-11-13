@@ -4,7 +4,7 @@ Instructions for AI coding agents (and humans) working in this repository.
 
 ## Project
 
-`flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
+`flowcharts` is a CLI (`pyflowcharts`) that turns each function in Python source files or directories into a control-flow flowchart, plus a module-level chart for files whose top level does work, and draws one call graph per run. It outputs JSON, DOT, SVG, PNG and Mermaid. The JSON is the stable, machine-readable format, and a future GUI explorer will read it.
 
 - Design spec: `docs/superpowers/specs/2026-11-11-python-flowcharts-design.md`
 - MVP implementation plan: `docs/superpowers/plans/2026-11-11-python-flowcharts-mvp.md`
@@ -33,20 +33,24 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
                  frontends/python/           cfg/model.py            ir.py             serialize.py (json)
                  (tree-sitter adapter)       cfg/builder.py                            backends/dot.py (dot/svg/png)
                                              cfg/finally_.py                           backends/mermaid.py
+                                                                                       backends/callgraph.py
 ```
 
-- `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `Chart`, `FunctionChart`, `Node`, `Edge`, …). This is the contract between frontends and backends.
+Between parsing and the backends, `calls.py` links the calls of every document in the run.
+
+- `src/pyflowcharts/ir.py`: language-neutral dataclasses (`Document`, `Chart`, `FunctionChart`, `Node`, `Edge`, `Call`, `CallRef`, …). This is the contract between frontends and backends.
 - `src/pyflowcharts/cfg/`: the language-neutral statement model (`Step`, `Branch`, `Loop`, `Try`, …) and the chart builder (frontier walk, node IDs, reveal rule, `finally` copies). Frontends produce the model; the builder produces nodes and edges.
-- `src/pyflowcharts/frontends/`: the `Frontend` protocol (returning a `ParseResult` of document plus warnings) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning. `python/module.py` decides whether a file's top level does work and builds its module chart.
-- `src/pyflowcharts/backends/`: renderers that depend only on the IR.
+- `src/pyflowcharts/frontends/`: the `Frontend` protocol (`parse(source, path, options, key=None) -> ParseResult`, a document plus warnings; `key` is the output key the module name comes from) and an extension-based registry. `python/` is the only frontend: it parses with tree-sitter, validates each function with `ast.parse`, and converts statements into the model. Functions with syntax errors are skipped with a warning. `python/module.py` decides whether a file's top level does work and builds its module chart. `python/calls.py` finds each statement's calls and their candidate targets (scopes and imports).
+- `src/pyflowcharts/calls.py`: the language-neutral linker; sets each call's `target` against all documents of the run.
+- `src/pyflowcharts/backends/`: renderers that depend only on the IR. `callgraph.py` draws the run's call graph.
 - `src/pyflowcharts/inputs.py`: expands path arguments (directory walk, `--exclude`), deduplicates them, assigns each file its output key and checks for output collisions.
-- `src/pyflowcharts/output.py`: writes each document under its output key in the selected formats.
-- `src/pyflowcharts/cli.py`: argument parsing, `--function` selection, warnings and exit codes.
+- `src/pyflowcharts/output.py`: writes each document under its output key in the selected formats, and the call graph as `OUTDIR/callgraph.<ext>`.
+- `src/pyflowcharts/cli.py`: argument parsing, linking, `--function` selection, warnings and exit codes.
 
 ## Rules
 
 **Layering**
-- Backends and the CLI must not import `ast`, tree-sitter or anything from `frontends/python/`. Language-specific logic lives only in its frontend.
+- Backends, the linker and the CLI must not import `ast`, tree-sitter or anything from `frontends/python/`. Language-specific logic lives only in its frontend.
 - `cfg/` must not import tree-sitter or anything from `frontends/`. It knows nothing about Python.
 - Adding a language means adding a frontend module that produces `cfg.model` statements and registering its extensions. No backend or `cfg/` changes should be needed.
 
@@ -77,4 +81,4 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
 - Handlers are assumed to catch whatever reaches them: the uncaught path out of a `try` with handlers is not drawn, and the `try` node itself has no exception edges.
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Class bodies are charted only through their methods.
-- Call graphs are out of scope for now.
+- Call resolution is static and best-effort: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled.

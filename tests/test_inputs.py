@@ -165,3 +165,11 @@ def test_argument_spellings_give_same_keys(tmp_path, monkeypatch):  # Review Foc
 def test_outputs_inside_tree_are_not_inputs(tmp_path):  # Review Focus 5
     tree(tmp_path, "m.py", "charts/m.json", "charts/m.svg", "charts/m.dot", "charts/m.mmd")
     assert keys(expand([tmp_path], [])) == ["m"]
+
+
+def test_reserved_key_collision(tmp_path):
+    tree(tmp_path, "callgraph.py", "sub/callgraph.py")
+    msg = collision_error(expand([tmp_path], []).inputs, reserved={"callgraph": "it is reserved"})
+    path = tmp_path / "callgraph.py"
+    assert msg == f"error: output name collision: {path} maps to 'callgraph'; it is reserved"
+    assert collision_error(expand([tmp_path / "sub"], []).inputs) is None  # no reservation given

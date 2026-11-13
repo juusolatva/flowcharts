@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import warnings
+from dataclasses import replace
 
 from tree_sitter import Node
 
@@ -12,6 +13,7 @@ from pyflowcharts.cfg.model import (
     Block,
     Branch,
     Break,
+    CallSite,
     Continue,
     Handler,
     Loop,
@@ -20,6 +22,8 @@ from pyflowcharts.cfg.model import (
     Terminal,
     Try,
 )
+from pyflowcharts.frontends.python.calls import Resolver, call_roots
+from pyflowcharts.frontends.python.discovery import Found
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.ir import ChartOptions, NodeKind
 
@@ -33,18 +37,31 @@ def named(node: Node) -> list[Node]:
     return [c for c in node.named_children if c.type not in _EXTRAS]
 
 
-def convert_body(func: Node, src: Source, options: ChartOptions) -> Block:
+def convert_body(
+    func: Node,
+    src: Source,
+    options: ChartOptions,
+    resolver: Resolver | None = None,
+    scope: Found | None = None,
+) -> Block:
     """The function body as model statements, with a leading docstring dropped."""
-    return convert_statements(func.child_by_field_name("body"), src, options)
+    body = func.child_by_field_name("body")
+    return convert_statements(body, src, options, resolver, scope)
 
 
-def convert_statements(parent: Node | None, src: Source, options: ChartOptions) -> Block:
+def convert_statements(
+    parent: Node | None,
+    src: Source,
+    options: ChartOptions,
+    resolver: Resolver | None = None,
+    scope: Found | None = None,
+) -> Block:
     """``parent``'s statements (a function body or the module) as model statements, with a
     leading docstring dropped."""
     stmts = named(parent) if parent is not None else []
     if stmts and is_docstring(stmts[0]):
         stmts = stmts[1:]
-    return _Converter(src, options).stmts(stmts)
+    return _Converter(src, options, resolver, scope).stmts(stmts)
 
 
 def convert_block(block: Node | None, src: Source, options: ChartOptions) -> Block:
@@ -120,9 +137,20 @@ def _field_text(node: Node, field: str, src: Source) -> str:
 
 
 class _Converter:
-    def __init__(self, src: Source, options: ChartOptions) -> None:
+    def __init__(
+        self,
+        src: Source,
+        options: ChartOptions,
+        resolver: Resolver | None = None,
+        scope: Found | None = None,
+    ) -> None:
         self.src = src
         self.options = options
+        self.resolver = resolver
+        self.scope = scope  # the chart's function, or None for the module chart
+
+    def _calls(self, node: Node) -> tuple[CallSite, ...]:
+        return () if self.resolver is None else self.resolver.sites(call_roots(node), self.scope)
 
     def block(self, block: Node | None) -> Block:
         return self.stmts(named(block)) if block is not None else ()
@@ -131,8 +159,10 @@ class _Converter:
         out: list[Stmt] = []
         for node in nodes:
             converted = self.stmt(node)
-            if converted is not None:
+            if isinstance(converted, Try | Break | Continue):
                 out.append(converted)
+            elif converted is not None:
+                out.append(replace(converted, calls=self._calls(node)))
         return tuple(out)
 
     def stmt(self, node: Node) -> Stmt | None:
@@ -227,7 +257,11 @@ class _Converter:
             else:
                 arms.append(Arm("False", (self._if_chain(rest[0], rest[1:]),)))
         return Branch(
-            f"if {self._text(clause, 'condition')}", self.src.location(clause), tuple(arms), default
+            f"if {self._text(clause, 'condition')}",
+            self.src.location(clause),
+            tuple(arms),
+            default,
+            calls=self._calls(clause),
         )
 
     def _match(self, node: Node) -> Branch:
@@ -273,7 +307,7 @@ class _Converter:
         if rest:
             label += " " + " ".join(self.src.source_text(c) for c in rest)
         block = next((c for c in clause.children if c.type == "block"), None)
-        return Handler(label, self.src.location(clause), self.block(block))
+        return Handler(label, self.src.location(clause), self.block(block), self._calls(clause))
 
     def _list_text(self, nodes: list[Node]) -> str:
         """Source text of a comma-separated list, keeping a trailing comma (``x,``)."""

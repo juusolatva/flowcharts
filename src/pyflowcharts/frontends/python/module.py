@@ -7,6 +7,7 @@ from pathlib import PurePath
 from tree_sitter import Node
 
 from pyflowcharts.cfg.builder import build_chart
+from pyflowcharts.frontends.python.calls import Resolver
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.frontends.python.statements import convert_statements, is_docstring, named
 from pyflowcharts.ir import MODULE_QUALNAME, Chart, ChartOptions, SourceLocation
@@ -50,18 +51,20 @@ def _declares(stmt: Node) -> bool:
     )
 
 
-def module_chart(root: Node, src: Source, path: str, options: ChartOptions) -> Chart:
+def module_chart(
+    root: Node, src: Source, path: str, options: ChartOptions, resolver: Resolver | None = None
+) -> Chart:
     """The module's top-level statements as a chart. Raises ``StrayLoopTransfer`` for a
     top-level ``break``/``continue``."""
     location = _location(root, src)
-    nodes, edges = build_chart(
+    nodes, edges, calls = build_chart(
         MODULE_QUALNAME,
         f"module {PurePath(path).stem}",
         location,
-        convert_statements(root, src, options),
+        convert_statements(root, src, options, resolver),
         options,
     )
-    return Chart(qualname=MODULE_QUALNAME, location=location, nodes=nodes, edges=edges)
+    return Chart(qualname=MODULE_QUALNAME, location=location, nodes=nodes, edges=edges, calls=calls)
 
 
 def _location(root: Node, src: Source) -> SourceLocation:

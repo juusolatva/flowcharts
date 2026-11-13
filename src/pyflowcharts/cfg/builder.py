@@ -17,6 +17,7 @@ from pyflowcharts.cfg.model import (
     Block,
     Branch,
     Break,
+    CallSite,
     Continue,
     Loop,
     Step,
@@ -24,7 +25,7 @@ from pyflowcharts.cfg.model import (
     Terminal,
     Try,
 )
-from pyflowcharts.ir import ChartOptions, Edge, Node, NodeKind, SourceLocation
+from pyflowcharts.ir import Call, ChartOptions, Edge, Node, NodeKind, SourceLocation
 from pyflowcharts.labels import shorten
 
 Frontier = list[tuple[str, str | None]]
@@ -51,13 +52,13 @@ def build_chart(
     start_loc: SourceLocation,
     body: Block,
     options: ChartOptions,
-) -> tuple[list[Node], list[Edge]]:
+) -> tuple[list[Node], list[Edge], list[Call]]:
     builder = ChartBuilder(qualname, options)
     start_id = f"{qualname}#start"
     builder.nodes.append(Node(start_id, NodeKind.START, builder.label(start_label), start_loc))
     builder.nodes.append(Node(builder.end_id, NodeKind.END, "end", None))
     builder.connect(builder.block(body, [(start_id, None)]), builder.end_id)
-    return builder.nodes, builder.edges
+    return builder.nodes, builder.edges, builder.calls
 
 
 class ChartBuilder:
@@ -66,6 +67,7 @@ class ChartBuilder:
         self.options = options
         self.nodes: list[Node] = []
         self.edges: list[Edge] = []
+        self.calls: list[Call] = []
         self.end_id = f"{qualname}#end"
         self.loops: list[LoopContext] = []
         self.pending: list[FinallyContext] = []
@@ -95,12 +97,12 @@ class ChartBuilder:
         match stmt:
             case Step(hidden=True) if not (self._reveal or self.options.show_variables):
                 return frontier
-            case Step(label=label, loc=loc, body=body):
-                node_id = self.add_node(loc, NodeKind.PROCESS, label)
+            case Step(label=label, loc=loc, body=body, calls=calls):
+                node_id = self.add_node(loc, NodeKind.PROCESS, label, calls=calls)
                 self.connect(frontier, node_id)
                 return self.block(body, [(node_id, None)])
-            case Terminal(kind=kind, label=label, loc=loc):
-                node_id = self.add_node(loc, kind, label)
+            case Terminal(kind=kind, label=label, loc=loc, calls=calls):
+                node_id = self.add_node(loc, kind, label, calls=calls)
                 self.connect(frontier, node_id)
                 if kind is NodeKind.RAISE and self.scopes:
                     return []  # its exception edges (added by add_node) are its exits
@@ -124,7 +126,7 @@ class ChartBuilder:
         raise TypeError(f"unknown statement {stmt!r}")
 
     def _branch(self, stmt: Branch, frontier: Frontier) -> Frontier:
-        node_id = self.add_node(stmt.loc, NodeKind.DECISION, stmt.label)
+        node_id = self.add_node(stmt.loc, NodeKind.DECISION, stmt.label, calls=stmt.calls)
         self.connect(frontier, node_id)
         out: Frontier = []
         for arm in stmt.arms:
@@ -134,7 +136,7 @@ class ChartBuilder:
         return out
 
     def _loop(self, stmt: Loop, frontier: Frontier) -> Frontier:
-        node_id = self.add_node(stmt.loc, NodeKind.LOOP, stmt.label)
+        node_id = self.add_node(stmt.loc, NodeKind.LOOP, stmt.label, calls=stmt.calls)
         self.connect(frontier, node_id)
         context = LoopContext(node_id, [])
         self.loops.append(context)
@@ -209,9 +211,17 @@ class ChartBuilder:
     def node_id(self, loc: SourceLocation, suffix: str = "") -> str:
         return f"{self.qualname}#L{loc.line}C{loc.column}{suffix}{self.copy_suffix}"
 
-    def add_node(self, loc: SourceLocation, kind: NodeKind, label: str, suffix: str = "") -> str:
+    def add_node(
+        self,
+        loc: SourceLocation,
+        kind: NodeKind,
+        label: str,
+        suffix: str = "",
+        calls: tuple[CallSite, ...] = (),
+    ) -> str:
         node_id = self.node_id(loc, suffix)
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
+        self.calls += [Call(node_id, site.text, list(site.candidates), None) for site in calls]
         # Any statement can raise; synthetic (suffixed) nodes are not statements.
         if not suffix and self.scopes:
             self.scopes[-1].attach(self, [node_id])

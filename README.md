@@ -1,8 +1,8 @@
 # flowcharts
 
-`pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
+`pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Each run also draws a **call graph** of the charted functions, clustered by file. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
 
-The JSON output (schema version 2) is the stable, machine-readable format. It holds the full graph plus source locations and is meant for other tools, such as a future GUI explorer.
+The JSON output (schema version 3) is the stable, machine-readable format. It holds the full graph, source locations and every call with its resolved target, and is meant for other tools, such as a future GUI explorer.
 
 ## Installation
 
@@ -42,6 +42,7 @@ uv run pyflowcharts src/ --no-module                     # functions only
 | `--no-parameters` | Start node shows `def name(...)` instead of the full signature |
 | `--no-returns` | Return nodes show `return` without the value |
 | `--no-module` | Never draw module-level charts |
+| `--no-call-graph` | Do not write the run's call graph picture (the JSON still records calls) |
 | `--function QUALNAME ...` | Only chart these functions (`<module>` selects module-level charts); repeatable |
 | `--exclude GLOB ...` | When walking a directory, skip matching files and directories: a pattern without `/` matches names at any depth, one with `/` matches the path relative to the directory, and a trailing `/` matches directories only; repeatable |
 | `--max-label N` | Truncate node labels to N characters (default 60) |
@@ -58,6 +59,7 @@ A file gets a module chart when its top level has a statement other than a docst
 
 ```
 OUTDIR/
+├── callgraph.svg              # the run's call graph (not for json-only runs)
 ├── mymodule.json              # one JSON document per source file (if json selected)
 ├── mymodule.svg               # the module-level chart, if the file has one
 └── mymodule/
@@ -66,9 +68,17 @@ OUTDIR/
     └── Inventory.size@L25.svg # later duplicates (e.g. property setters) get @L<line>
 ```
 
-Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written.
+Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`).
 
 Methods are named `Class.method` and nested functions `outer.inner`.
+
+### Call graphs
+
+Every chart's JSON lists its calls: the node each call is written in, the callee text, the candidate targets, and the `target` chart in this run when one matches. `OUTDIR/callgraph.<ext>` draws one node per chart and one edge per caller/callee pair, clustered by file. With `--function`, it shows only the selected charts.
+
+Calls are resolved statically: names defined in the file (innermost function scope first), `self.method()` and `cls.method()` inside a class, `Class.method()`, and `import` / `from … import` (absolute and relative) into other files of the same run. Module names come from the walked paths, so walk the import root: `pyflowcharts src/` (not `src/mypkg/`) for a `src` layout.
+
+A parameter named like a function hides it, as in Python. Not resolved: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.method`/`cls.method`. Such calls are still listed, with no target.
 
 ### Exit codes
 
@@ -99,7 +109,7 @@ A function that does not parse is skipped with a warning such as `mod.py:12: war
 
 - Handlers are assumed to catch whatever reaches them, so the uncaught path out of a `try` that has handlers is not drawn.
 - Class bodies are charted only through their methods.
-- Call graphs between functions are not drawn.
+- Call resolution is static and best-effort (see "Call graphs").
 
 ## Development
 

@@ -6,9 +6,10 @@ import argparse
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from pyflowcharts import __version__
+from pyflowcharts.calls import link
 from pyflowcharts.frontends import SourceError, frontend_for_path
 from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.inputs import Input, collision_error, expand
@@ -17,6 +18,11 @@ from pyflowcharts.output import Writer
 
 FORMATS = ("json", "dot", "svg", "png", "mermaid")
 DEFAULT_FORMATS = ["svg", "json"]
+
+CALLGRAPH_RESERVED = (
+    "it is reserved for the call graph; rename the file, chart its parent directory instead, "
+    "or pass --no-call-graph"
+)
 
 EXIT_OK = 0
 EXIT_ERROR = 1
@@ -34,7 +40,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         show_module=not args.no_module,
     )
     expansion = expand(args.paths, args.exclude)
-    if (collision := collision_error(expansion.inputs)) is not None:
+    # The key is only taken when a picture will actually be written.
+    pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
+    reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
+    if (collision := collision_error(expansion.inputs, reserved)) is not None:
         print(collision, file=sys.stderr)
         return EXIT_ERROR
 
@@ -47,10 +56,16 @@ def main(argv: Sequence[str] | None = None) -> int:
     results: list[tuple[Input, ParseResult]] = []
     for item in expansion.inputs:
         try:
-            results.append((item, _parse_file(item.path, options)))
+            results.append((item, _parse_file(item.path, options, item.key)))
         except SourceError as err:
             print(err, file=sys.stderr)
             status = EXIT_ERROR
+
+    linked = link([result.document for _, result in results])
+    results = [
+        (item, replace(result, document=doc))
+        for (item, result), doc in zip(results, linked, strict=True)
+    ]
 
     # Decided on the full result, so a file that only lacks the requested functions is quiet.
     empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
@@ -69,6 +84,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     writer = Writer(args.output, formats)
     for item, result in results:
         writer.write(result.document, item.key)
+    if not args.no_call_graph:
+        writer.write_callgraph([result.document for _, result in results])
 
     if writer.write_failed:
         status = EXIT_ERROR
@@ -118,6 +135,9 @@ def _parser() -> argparse.ArgumentParser:
         "--no-returns", action="store_true", help="hide returned values in return nodes"
     )
     parser.add_argument("--no-module", action="store_true", help="never chart module-level code")
+    parser.add_argument(
+        "--no-call-graph", action="store_true", help="do not write the run's call graph picture"
+    )
     parser.add_argument(
         "--function",
         nargs="+",
@@ -199,7 +219,7 @@ def _select(
     return selected
 
 
-def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
+def _parse_file(path: Path, options: ChartOptions, key: PurePosixPath) -> ParseResult:
     frontend = frontend_for_path(path)
     try:
         source = path.read_bytes()
@@ -207,4 +227,4 @@ def _parse_file(path: Path, options: ChartOptions) -> ParseResult:
         raise SourceError(str(path), "no such file") from None
     except OSError as err:
         raise SourceError(str(path), err.strerror or str(err)) from None
-    return frontend.parse(source, str(path), options)
+    return frontend.parse(source, str(path), options, key)
