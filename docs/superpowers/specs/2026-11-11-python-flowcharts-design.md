@@ -1,7 +1,7 @@
 # flowcharts — Design
 
 **Date:** 2026-11-11
-**Status:** Implemented. Amended on 2026-11-12 by `2026-11-12-tree-sitter-frontend-design.md` (tree-sitter frontend, shared CFG engine, per-function syntax errors), which wins where the two disagree. Amended on 2026-11-13 by `2026-11-13-exception-edges-design.md` (per-statement exception edges, `return`/`raise` through `finally`) and `2026-11-13-directories-and-module-code-design.md` (directory inputs, module-level charts, schema version 2), both folded in below.
+**Status:** Implemented. Amended on 2026-11-12 by `2026-11-12-tree-sitter-frontend-design.md` (tree-sitter frontend, shared CFG engine, per-function syntax errors), which wins where the two disagree. Amended on 2026-11-13 by `2026-11-13-exception-edges-design.md` (per-statement exception edges, `return`/`raise` through `finally`) and `2026-11-13-directories-and-module-code-design.md` (directory inputs, module-level charts, schema version 2), and by `2026-11-13-call-graphs-design.md` (call data in the IR, one call graph per run, schema version 3), all folded in below.
 
 ## Purpose
 
@@ -16,11 +16,13 @@ A Python CLI tool that reads Python source files and produces a **control-flow f
 - One module-level chart per file whose top level does work (see "Module-level charts").
 - Output formats: `json`, `dot`, `svg`, `png`, `mermaid`.
 - Detail options: show/hide parameters, return values and variable assignments.
+- Calls: every chart records its calls with candidate targets, resolved within the run, and each run draws one call graph (see "Call graphs").
 
 **Out of scope (for now)**
 - Other languages. The architecture allows them (see "Frontends"), but none are built.
 - The GUI explorer. Only its input format (JSON) is built now.
-- Class bodies beyond their methods, `.gitignore` support, call graphs between functions.
+- Class bodies beyond their methods, `.gitignore` support.
+- Inheritance-aware method resolution, type inference, resolving calls into modules outside the run, per-file call-graph pictures.
 
 ## Architecture
 
@@ -29,21 +31,25 @@ source file ──► Frontend (per language) ──► cfg (shared engine) ─�
                  PythonFrontend (tree-sitter)  model + builder                          json | dot → svg/png | mermaid
 ```
 
-- **Frontend**: turns one source file into a `ParseResult` (a `Document` plus warnings). It's selected by file extension through a small registry, so a new language means adding a module, not a new project. Frontends produce language-neutral `cfg.model` statements; the shared `cfg.builder` turns them into nodes and edges.
+- **Frontend**: turns one source file into a `ParseResult` (a `Document` plus warnings). It's selected by file extension through a small registry, so a new language means adding a module, not a new project. Its signature is `parse(source: bytes, path: str, options: ChartOptions, key: PurePosixPath | None = None) -> ParseResult`; `key` is the file's output key, from which the module name is derived (the file's stem when omitted). Frontends produce language-neutral `cfg.model` statements; the shared `cfg.builder` turns them into nodes and edges.
 - **IR**: plain dataclasses, language-neutral. This is the contract between frontends and backends, and it's what the JSON file contains.
+- **Linker** (`calls.py`): language-neutral; sets each call's target against all documents of the run.
 - **Backends**: depend only on the IR.
 
 ## IR
 
-- `Document`: `source` (path as given or as reached by a directory walk), `language` (`"python"`), `functions: list[FunctionChart]`, `module: Chart | null`, `schema_version` (= 2).
-- `Chart`: `qualname`, `location`, `nodes`, `edges`. The module chart is a `Chart` with qualname `<module>`.
-- `FunctionChart(Chart)`: adds `name`, `is_async`, `parameters: list[Parameter]`, `returns` (annotation text or null). `qualname` is unique within the document. In JSON its keys come in the order `qualname`, `location`, `nodes`, `edges`, `name`, `is_async`, `parameters`, `returns`.
+- `Document`: `source` (path as given or as reached by a directory walk), `language` (`"python"`), `functions: list[FunctionChart]`, `module_name` (dotted, e.g. `pkg.io.load`; `""` when the file has none), `module: Chart | null`, `schema_version` (= 3).
+- `Chart`: `qualname`, `location`, `nodes`, `edges`, `calls: list[Call]`. The module chart is a `Chart` with qualname `<module>`.
+- `FunctionChart(Chart)`: adds `name`, `is_async`, `parameters: list[Parameter]`, `returns` (annotation text or null). `qualname` is unique within the document. In JSON its keys come in the order `qualname`, `location`, `nodes`, `edges`, `calls`, `name`, `is_async`, `parameters`, `returns`.
 - `Parameter`: `name`, `annotation`, `default` (source text or null), `kind` (`positional_only | positional_or_keyword | var_positional | keyword_only | var_keyword`).
 - `Node`: `id`, `kind`, `label`, `location` (`line`, `column`, `end_line`, `end_column`, or null for synthetic nodes).
 - `Edge`: `source`, `target`, `label` (null or e.g. `"True"`, `"False"`, `"next"`, `"done"`, `"exception"`, `"case …"`).
+- `Call`: `node` (id of the node the call is written in), `text` (the callee's source text, never truncated), `candidates: list[CallRef]` (most likely first, no duplicates), `target: CallRef | null` (the first candidate charted in the run). Calls are ordered by node, then pre-order within a node.
+- `CallRef`: `module` (dotted module name), `qualname`.
 
 Rules:
 - Schema version 2 added `Chart`, `Document.module` and the key order above. `from_json` still reads version 1 documents (as `module = null`) and keeps the version it read.
+- Schema version 3 added `Call`, `CallRef`, `Chart.calls` and `Document.module_name`. Versions 1 and 2 are read with `calls = []` and `module_name = ""`.
 - The IR always holds the full signature data. Display options only change node labels, plus which assignment nodes exist.
 - **No layout in the IR** (no x/y). Layout belongs to Graphviz or the GUI.
 - **Stable node IDs**: `{qualname}#start`, `{qualname}#end`, `{qualname}#L{line}C{col}` for statements, with the suffix `~finally` for synthetic nodes and `~break@L{line}C{col}`, `~continue@…`, `~return@…` or `~exception@…` (naming the owning `try`) for nodes in duplicated finally bodies, so nested copies stay unique. IDs never contain `:`, because DOT reads it as port syntax. The module chart's IDs use the qualname `<module>` (`<module>#start`, `<module>#L3C0`), which no function qualname can equal; the DOT backend quotes the graph name with `graphviz.nohtml` so the brackets survive.
@@ -84,6 +90,15 @@ Rules:
 
 **Known simplifications** (documented, not bugs): handlers are assumed to catch whatever reaches them, so the uncaught path out of a `try` that has handlers is not drawn. The `try` node itself has no exception edges, so a `try` whose body has no nodes leaves its handlers unreachable. Class bodies are charted only through their methods.
 
+## Call graphs
+
+- **Ownership:** a call belongs to the node of the statement it is written in: conditions, loop headers, `with` items, `except` expressions, `match` subjects and guards, `return`/`raise`. Calls in a `def`'s decorators, defaults and annotations belong to the enclosing chart's `def` node; a `class` node owns its whole subtree (decorators, bases, body, method signatures) except method bodies. Lambdas and comprehensions belong to the enclosing statement. Top-level `def`/`class` statements own calls only when there is a module chart. Hidden steps (plain assignments) record no calls; a statement in a duplicated `finally` body records them on every copy.
+- **Resolution (Python, static, best-effort):** bare names walk the scopes of the owning node (innermost function first, then the module; class bodies are not scopes), where the first scope that binds the name by a `def`, `class` or import wins. A class call gives `C.__init__`. `self.m()`/`cls.m()` in a method gives `C.m`. `C.m()` follows a class binding. `import x.y` binds `x` and makes `x.y` reachable; `import x.y as z` binds `z` only; `from m import x` gives `(m, x)` or, for `x.f()`, `(m.x, f)` then `(m, x.f)`. Relative imports resolve against the file's package; `__future__` and star imports bind nothing.
+- **Module names** come from the output key (`pkg/io/load` → `pkg.io.load`, `pkg/__init__` → `pkg`), so absolute imports resolve when the import root is walked (`pyflowcharts src/`).
+- **Linker:** each call's target is its first candidate that names a function chart in the run. Module charts are never targets; documents with an empty or shared module name are not indexed.
+- **Picture:** `OUTDIR/callgraph.<ext>` for each selected picture format: one cluster per file with charts, one node per chart, one edge per caller/callee pair with a resolved call between drawn charts, `rankdir=LR`.
+- **Limits:** shadowing by local assignment, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled. Duplicate qualnames resolve to the first definition.
+
 ## Labels
 
 - Source text is the original source of the statement or expression, so literals keep their written form (`0xD800`, quote style, `1_000`). Comments and `\` continuations are removed and multi-line code is joined (see the tree-sitter spec's Labels section for the whitespace rule). Whitespace runs collapse to one space, and text is truncated to `max_label_length` (default 60) with `…`.
@@ -95,7 +110,7 @@ Rules:
 
 ```
 pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
-             [--no-parameters] [--no-returns] [--no-module]
+             [--no-parameters] [--no-returns] [--no-module] [--no-call-graph]
              [--function QUALNAME ...] [--exclude GLOB ...] [--max-label N]
 ```
 
@@ -107,6 +122,7 @@ pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 - `OUTDIR/K.json`: one JSON document per source file (when `json` is selected).
 - `OUTDIR/K.<ext>`: the module chart for `dot`, `svg`, `png`, `mermaid` (`.mmd`).
 - `OUTDIR/K/<qualname>.<ext>`: one file per function. Directories are created only for files that are written.
+- `OUTDIR/callgraph.<ext>`: the run's call graph for `dot`, `svg`, `png`, `mermaid`, unless `--no-call-graph` is given or no document has a chart. With `--function` it shows only the selected charts, while the JSON keeps each chart's full calls. The output key `callgraph` is reserved while the call graph is enabled.
 - `--function` restricts all outputs to the given qualnames; `<module>` selects module charts. It accepts several names (`--function a b`) and can be repeated (`--function a --function b`). The list of available names is deduplicated across files. Put the input paths before options that take several values.
 
 ## Errors and exit codes
@@ -118,6 +134,7 @@ pyflowcharts PATH [PATH ...] [-o OUTDIR] [-f FORMAT ...] [--variables]
 | Undecodable source, null bytes, missing file, unsupported extension | `path[:line]: error: message` on stderr; other files still processed | 1 |
 | Unknown `--function` name | error listing the available qualnames | 1 |
 | Two inputs with the same output key, or one key a directory prefix of another (`pkg/mod.py` beside `pkg/mod/`) | `error: output name collision: …` before anything is written | 1 |
+| A file's output key is `callgraph` while the call graph is enabled | `error: output name collision: PATH maps to 'callgraph'; it is reserved for the call graph; …` before anything is written | 1 |
 | Top-level `break`/`continue` outside a loop | `path:line: warning: syntax error in module code; module chart skipped`; other charts still written | 1 |
 | Tree-sitter misreads top-level syntax that `ast` accepts | `path:line: warning: unsupported syntax in module code; module chart skipped`; other charts still written | 1 |
 | Directory that cannot be read | `DIR: error: cannot read directory: reason`; the rest of the walk continues | 1 |
