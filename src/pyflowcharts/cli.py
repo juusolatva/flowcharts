@@ -9,7 +9,13 @@ from dataclasses import replace
 from pathlib import Path
 
 from pyflowcharts import __version__
-from pyflowcharts.cli_options import add_chart_options, chart_options
+from pyflowcharts.cli_options import (
+    EXIT_ERROR,
+    EXIT_NO_GRAPHVIZ,
+    EXIT_OK,
+    add_chart_options,
+    chart_options,
+)
 from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.inputs import Input, collision_error, expand
 from pyflowcharts.ir import MODULE_QUALNAME
@@ -23,10 +29,6 @@ CALLGRAPH_RESERVED = (
     "it is reserved for the call graph; rename the file, chart its parent directory instead, "
     "or pass --no-call-graph"
 )
-
-EXIT_OK = 0
-EXIT_ERROR = 1
-EXIT_NO_GRAPHVIZ = 2
 
 
 def main(argv: Sequence[str] | None = None) -> int:

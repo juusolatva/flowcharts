@@ -1,7 +1,10 @@
+import _thread
 import argparse
+import importlib
 import shutil
 import socket
 import sys
+import threading
 from pathlib import Path
 
 import pytest
@@ -10,9 +13,11 @@ from pyflowcharts import cli_options
 from pyflowcharts.cli import main
 from pyflowcharts.explorer import main as explore
 from pyflowcharts.explorer.main import port
+from pyflowcharts.explorer.server import ExplorerServer
 from pyflowcharts.inputs import EXPLORE_HINT
 from pyflowcharts.output import GRAPHVIZ_NOT_FOUND
 
+explorer_main = importlib.import_module("pyflowcharts.explorer.main")
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
 
 
@@ -85,10 +90,10 @@ def test_opens_browser_by_default(tmp_path, capsys):
 @needs_dot
 def test_startup_fails_when_nothing_parses(tmp_path, capsys):
     assert run([str(tmp_path / "nope.py")]) == 1
-    assert capsys.readouterr().err
+    assert "nope.py" in capsys.readouterr().err
     other = write(tmp_path, "x.js", "var a;\n")
     assert run([str(other)]) == 1
-    assert capsys.readouterr().err
+    assert "unsupported file type" in capsys.readouterr().err
 
 
 @needs_dot
@@ -122,7 +127,7 @@ def test_port_in_use_exits_1(tmp_path, capsys):
     assert capsys.readouterr().err.startswith("error: cannot listen on")
 
 
-def test_chart_options_shared(capsys):
+def test_chart_options_shared(monkeypatch):
     for parse in (
         lambda: main(["m.py", "--max-label", "0"]),
         lambda: run(["m.py", "--max-label", "0"]),
@@ -130,4 +135,39 @@ def test_chart_options_shared(capsys):
         with pytest.raises(SystemExit) as info:
             parse()
         assert info.value.code == 2
-    assert cli_options.chart_options is not None
+    parser = argparse.ArgumentParser()
+    cli_options.add_chart_options(parser)
+    args = parser.parse_args(["--max-label", "7", "--no-module"])
+    options = cli_options.chart_options(args)
+    assert options.max_label_length == 7
+    assert not options.show_module
+
+
+@needs_dot
+def test_serving_path_stops_on_interrupt(tmp_path, monkeypatch):
+    src = write(tmp_path, "m.py")
+    real_serve = ExplorerServer.serve_forever
+    real_watch = explorer_main.watch
+    watchers: list[threading.Thread] = []
+
+    def serve(self, *args, **kwargs):
+        # Interrupt the real loop, so the stdlib's own cleanup still runs.
+        timer = threading.Timer(0.3, _thread.interrupt_main)
+        timer.start()
+        try:
+            return real_serve(self, *args, **kwargs)
+        finally:
+            timer.cancel()
+
+    def watch(*args, **kwargs):
+        watchers.append(threading.current_thread())
+        return real_watch(*args, **kwargs)
+
+    monkeypatch.setattr(ExplorerServer, "serve_forever", serve)
+    monkeypatch.setattr(explorer_main, "watch", watch)
+    before = set(threading.enumerate())
+    assert explore([str(src), "--no-browser"]) == 0
+    assert len(watchers) == 1
+    watchers[0].join(timeout=5)
+    assert not watchers[0].is_alive()
+    assert set(threading.enumerate()) <= before

@@ -6,6 +6,10 @@ import argparse
 
 from pyflowcharts.ir import ChartOptions
 
+EXIT_OK = 0
+EXIT_ERROR = 1
+EXIT_NO_GRAPHVIZ = 2
+
 
 def exclude_pattern(text: str) -> str:
     if text.rstrip("/") == "":

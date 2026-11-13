@@ -12,15 +12,17 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from pyflowcharts import __version__
-from pyflowcharts.cli_options import add_chart_options, chart_options
+from pyflowcharts.cli_options import (
+    EXIT_ERROR,
+    EXIT_NO_GRAPHVIZ,
+    EXIT_OK,
+    add_chart_options,
+    chart_options,
+)
 from pyflowcharts.explorer.server import ExplorerServer, shutdown, watch
 from pyflowcharts.explorer.workspace import Workspace
 from pyflowcharts.inputs import EXPLORE_HINT, collision_error, expand
 from pyflowcharts.output import GRAPHVIZ_NOT_FOUND
-
-EXIT_OK = 0
-EXIT_ERROR = 1
-EXIT_NO_GRAPHVIZ = 2
 
 
 def port(text: str) -> int:
@@ -95,17 +97,16 @@ def main(
         stop.set()
         server.server_close()
         return EXIT_OK
+    threading.Thread(
+        target=watch,
+        args=(workspace, server, stop),
+        kwargs={"log": lambda line: print(line, file=sys.stderr)},
+        daemon=True,
+    ).start()
     try:
-        threading.Thread(
-            target=watch,
-            args=(workspace, server, stop),
-            kwargs={"log": lambda line: print(line, file=sys.stderr)},
-            daemon=True,
-        ).start()
-        try:
-            server.serve_forever()
-        except KeyboardInterrupt:
-            pass
+        server.serve_forever()
+    except KeyboardInterrupt:
+        pass
     finally:
         shutdown(server, stop)
     return EXIT_OK
