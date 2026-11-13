@@ -32,11 +32,15 @@ export function attachPanZoom(svg) {
     { passive: false },
   );
 
+  let pointer = null; // only the first pointer pans; a second finger is ignored
+
   svg.addEventListener("pointerdown", (event) => {
-    if (event.button !== 0) return;
+    if (event.button !== 0 || pointer !== null) return;
+    pointer = event.pointerId;
     suppress = false;
     drag.begin(event.clientX, event.clientY);
     const move = (e) => {
+      if (e.pointerId !== pointer) return;
       const delta = drag.move(e.clientX, e.clientY);
       if (!delta) return;
       suppress = true;
@@ -45,7 +49,9 @@ export function attachPanZoom(svg) {
       box.x -= delta.dx / scale;
       box.y -= delta.dy / scale;
     };
-    const up = () => {
+    const up = (e) => {
+      if (e.pointerId !== pointer) return;
+      pointer = null;
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       window.removeEventListener("pointercancel", up);
