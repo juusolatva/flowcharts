@@ -19,7 +19,7 @@ SHAPES: dict[NodeKind, str] = {
 _ESCAPES = (("#", "#35;"), ('"', "#34;"), ("<", "#60;"), (">", "#62;"))
 
 
-def _escape(text: str) -> str:
+def escape(text: str) -> str:
     for char, entity in _ESCAPES:
         text = text.replace(char, entity)
     return text
@@ -29,12 +29,12 @@ def to_mermaid(chart: Chart) -> str:
     ids = {node.id: f"n{i}" for i, node in enumerate(chart.nodes)}
     lines = ["flowchart TD"]
     for node in chart.nodes:
-        lines.append(f"    {ids[node.id]}" + SHAPES[node.kind].format(t=_escape(node.label)))
+        lines.append(f"    {ids[node.id]}" + SHAPES[node.kind].format(t=escape(node.label)))
     for edge in chart.edges:
         if edge.label is None:
             arrow = "-->"
         else:
             line = "-.->" if edge.label == EXCEPTION_LABEL else "-->"
-            arrow = f'{line}|"{_escape(edge.label)}"|'
+            arrow = f'{line}|"{escape(edge.label)}"|'
         lines.append(f"    {ids[edge.source]} {arrow} {ids[edge.target]}")
     return "\n".join(lines) + "\n"
