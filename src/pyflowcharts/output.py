@@ -51,6 +51,8 @@ class Writer:
             self._save(base.parent / f"{base.name}.json", to_json(doc))
         if doc.module is not None:
             self._chart(doc.module, base.parent, base.name)
+        if set(self.formats) - {"json"}:
+            _warn_case_clashes(doc)
         for chart in doc.functions:
             self._chart(chart, base, chart.qualname)
 
@@ -128,3 +130,19 @@ class Writer:
     def _report(self, target: Path, err: OSError) -> None:
         print(f"error: cannot write {target}: {err.strerror or err}", file=sys.stderr)
         self.write_failed = True
+
+
+def _warn_case_clashes(doc: Document) -> None:
+    """Warn about function charts whose file names differ only in case."""
+    groups: dict[str, list[str]] = {}
+    for chart in doc.functions:
+        groups.setdefault(chart.qualname.casefold(), []).append(chart.qualname)
+    for names in groups.values():
+        if len(names) > 1:
+            quoted = [f"'{name}'" for name in names]
+            listed = f"{', '.join(quoted[:-1])} and {quoted[-1]}"
+            print(
+                f"warning: {doc.source}: functions {listed} differ only in case; their files "
+                "overwrite each other on case-insensitive file systems",
+                file=sys.stderr,
+            )

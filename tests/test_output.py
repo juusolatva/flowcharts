@@ -78,3 +78,19 @@ def test_write_callgraph(tmp_path):
 def test_no_callgraph_without_charts(tmp_path):
     Writer(tmp_path / "o", ["dot"]).write_callgraph([parse_as("", "a")])
     assert not (tmp_path / "o").exists()
+
+
+def test_function_names_differing_only_in_case_warn(tmp_path, capsys):
+    doc = parse("def Foo(): pass\ndef foo(): pass\ndef FOO(): pass\ndef bar(): pass\n")
+    Writer(tmp_path, ["dot"]).write(doc, PurePosixPath("t"))
+    assert capsys.readouterr().err == (
+        "warning: t.py: functions 'Foo', 'foo' and 'FOO' differ only in case; their files "
+        "overwrite each other on case-insensitive file systems\n"
+    )
+    assert files(tmp_path) == {"t/Foo.dot", "t/foo.dot", "t/FOO.dot", "t/bar.dot"}
+
+
+def test_case_clash_quiet_without_function_files(tmp_path, capsys):
+    doc = parse("def Foo(): pass\ndef foo(): pass\n")
+    Writer(tmp_path, ["json"]).write(doc, PurePosixPath("t"))
+    assert capsys.readouterr().err == ""
