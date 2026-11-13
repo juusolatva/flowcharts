@@ -13,10 +13,11 @@ function scriptedFetch() {
   return { fetch, calls };
 }
 
-function client(fetch) {
+function client(fetch, schedule = () => {}) {
   const log = { states: [], errors: [], busy: [], ok: 0 };
   const api = createApi({
     fetch,
+    schedule,
     onState: (s) => log.states.push(s.generation),
     onError: (e) => log.errors.push(e.message),
     onBusy: (b) => log.busy.push(b),
@@ -121,4 +122,20 @@ test("a failed state request is reported and ends the busy state", async () => {
 test("abort errors are ignorable, other errors are not", () => {
   assert.equal(isIgnorable({ name: "AbortError" }), true);
   assert.equal(isIgnorable(new Error("x")), false);
+});
+
+test("a failed state request is retried once after a delay", async () => {
+  let fail = true;
+  const fetch = async () => (fail ? new Response("", { status: 500 }) : json({ generation: 4 }));
+  const timers = [];
+  const { api, log } = client(fetch, (fn, ms) => timers.push({ fn, ms }));
+  await api.refresh();
+  await api.refresh(); // a second failure while a retry is pending schedules no other
+  assert.equal(timers.length, 1);
+  assert.equal(timers[0].ms, 2000);
+  fail = false;
+  timers[0].fn();
+  await tick();
+  assert.deepEqual(log.states, [4]);
+  assert.equal(timers.length, 1);
 });

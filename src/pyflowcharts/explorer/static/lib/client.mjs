@@ -6,11 +6,17 @@ export const isIgnorable = (error) => error?.name === "AbortError" || error inst
 
 // Every data request carries ?g=<generation>. Accepting a newer generation aborts the requests
 // of the older one; a 409 or a newer generation event triggers a single shared refetch.
-// `fetch` is injectable for tests.
-export function createApi({ onState, onBusy, onError, onOk, fetch = globalThis.fetch }) {
+// A failed state request is retried after RETRY_MS (one pending retry at a time), so the page
+// recovers without waiting for the next edit. `fetch` and `schedule` are injectable for tests.
+const RETRY_MS = 2000;
+
+export function createApi({
+  onState, onBusy, onError, onOk, fetch = globalThis.fetch, schedule = setTimeout,
+}) {
   const tracker = createTracker();
   let controller = new AbortController();
   let inflight = null;
+  let retrying = false;
 
   async function fetchState() {
     onBusy(true);
@@ -27,6 +33,13 @@ export function createApi({ onState, onBusy, onError, onOk, fetch = globalThis.f
       }
     } catch (error) {
       onError(error);
+      if (!retrying) {
+        retrying = true;
+        schedule(() => {
+          retrying = false;
+          refresh();
+        }, RETRY_MS);
+      }
     } finally {
       inflight = null;
       onBusy(false);
