@@ -35,8 +35,11 @@ EMPTY = ("", "pkg/__init__")
 
 def test_dot_clusters_nodes_and_edges():
     dot = to_callgraph_dot(run(APP, LIB, EMPTY))
-    assert "subgraph cluster_0" in dot and "subgraph cluster_1" in dot and "cluster_2" not in dot
-    assert "label=app" in dot and "label=lib" in dot
+    assert "subgraph cluster_0" in dot
+    assert "subgraph cluster_1" in dot
+    assert "cluster_2" not in dot
+    assert "label=app" in dot
+    assert "label=lib" in dot
     assert dot.count('"0#f" -> "1#g"') == 1  # Review Focus 3
     assert '"0#f" -> "0#f"' in dot  # recursion self-loop
     assert '"0#<module>" -> "0#f"' in dot
@@ -55,20 +58,23 @@ def test_module_label_escaped_and_source_fallback_without_colon_ids():
 def test_duplicate_module_names_get_distinct_nodes():
     docs = [parse("def f(): pass\n", "a.b"), parse("def f(): pass\n", "a/b")]
     dot = to_callgraph_dot(link(docs))
-    assert '"0#f"' in dot and '"1#f"' in dot
+    assert '"0#f"' in dot
+    assert '"1#f"' in dot
 
 
 def test_only_drawn_targets_get_edges():
     docs = run(APP, LIB)
     docs[1] = replace(docs[1], functions=[])  # as if --function dropped g
     dot = to_callgraph_dot(docs)
-    assert "1#g" not in dot and "cluster_1" not in dot
+    assert "1#g" not in dot
+    assert "cluster_1" not in dot
 
 
 def test_mermaid_generated_ids_and_keyword_safe():
     mmd = to_callgraph_mermaid(run(APP, LIB, ("def g(): pass\n", "end")))
     assert mmd.startswith("flowchart LR")
-    assert 'subgraph s0 ["app"]' in mmd and "subgraph end" not in mmd
+    assert 'subgraph s0 ["app"]' in mmd
+    assert "subgraph end" not in mmd
     assert 'subgraph s2 ["end"]' in mmd
     assert "#60;module#62;" in mmd
 

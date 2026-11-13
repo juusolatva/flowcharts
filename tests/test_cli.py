@@ -23,7 +23,8 @@ def write(directory: Path, name: str, text: str) -> Path:
 def test_default_formats(tmp_path):
     src = write(tmp_path, "mod.py", "def f(x):\n    return x\n")
     assert main([str(src), "-o", str(tmp_path / "out")]) == 0
-    assert (tmp_path / "out/mod.json").exists() and (tmp_path / "out/mod/f.svg").exists()
+    assert (tmp_path / "out/mod.json").exists()
+    assert (tmp_path / "out/mod/f.svg").exists()
 
 
 def test_text_formats(tmp_path):
@@ -84,14 +85,16 @@ def test_missing_and_unsupported_files(tmp_path, capsys):
     js = write(tmp_path, "x.js", "")
     assert main([str(tmp_path / "nope.py"), str(js), "-o", str(tmp_path / "o")]) == 1
     err = capsys.readouterr().err
-    assert "no such file" in err and "unsupported file type" in err
+    assert "no such file" in err
+    assert "unsupported file type" in err
 
 
 def test_stem_collision(tmp_path, capsys):
     a = write(tmp_path / "a", "utils.py", "def f(): pass\n")
     b = write(tmp_path / "b", "utils.py", "def g(): pass\n")
     assert main([str(a), str(b), "-o", str(tmp_path / "o")]) == 1
-    assert "collision" in capsys.readouterr().err and not (tmp_path / "o").exists()
+    assert "collision" in capsys.readouterr().err
+    assert not (tmp_path / "o").exists()
 
 
 def test_missing_graphviz(tmp_path, monkeypatch, capsys):
@@ -101,7 +104,8 @@ def test_missing_graphviz(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr("pyflowcharts.output.render", boom)
     src = write(tmp_path, "m.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "json"]) == 2
-    assert "Graphviz" in capsys.readouterr().err and (tmp_path / "o/m.json").exists()
+    assert "Graphviz" in capsys.readouterr().err
+    assert (tmp_path / "o/m.json").exists()
 
 
 def test_nothing_to_chart_warns(tmp_path, capsys):
@@ -137,7 +141,8 @@ def test_max_label_must_be_positive(tmp_path, capsys):
     src = write(tmp_path, "m.py", "def f(): pass\n")
     with pytest.raises(SystemExit) as e:
         main([str(src), "--max-label", "0"])
-    assert e.value.code == 2 and "positive integer" in capsys.readouterr().err
+    assert e.value.code == 2
+    assert "positive integer" in capsys.readouterr().err
 
 
 def test_unwritable_output_dir_is_an_error(tmp_path, capsys):
@@ -152,7 +157,8 @@ def test_write_failure_does_not_stop_other_outputs(tmp_path, capsys):
     src = write(tmp_path, "m.py", f"def {long_name}(): pass\ndef g(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "mermaid"]) == 1
     assert "cannot write" in capsys.readouterr().err
-    assert (tmp_path / "o/m.json").exists() and (tmp_path / "o/m/g.mmd").exists()
+    assert (tmp_path / "o/m.json").exists()
+    assert (tmp_path / "o/m/g.mmd").exists()
 
 
 BROKEN = "def good():\n    return 1\n\ndef broken(:\n    pass\n"
@@ -172,7 +178,8 @@ def test_all_functions_skipped_writes_empty_json_without_nothing_to_chart(tmp_pa
     src = write(tmp_path, "m.py", "def broken(:\n    pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
     err = capsys.readouterr().err
-    assert "function skipped" in err and "nothing to chart" not in err
+    assert "function skipped" in err
+    assert "nothing to chart" not in err
     assert from_json((tmp_path / "o/m.json").read_text()).functions == []
 
 
@@ -187,7 +194,8 @@ def test_function_selection_with_skipped_names(tmp_path, capsys):
     assert [c.qualname for c in doc.functions] == ["good"]
     assert main([str(src), "-o", str(tmp_path / "o3"), "--function", "zzz"]) == 1
     err = capsys.readouterr().err
-    assert "available: good, broken (skipped)" in err and not (tmp_path / "o3").exists()
+    assert "available: good, broken (skipped)" in err
+    assert not (tmp_path / "o3").exists()
 
 
 def test_outside_error_warns_even_with_function_filter(tmp_path, capsys):
@@ -212,7 +220,8 @@ def test_directory_input_mirrors_tree(tmp_path):
         "callgraph.dot",
     }
     doc = from_json((tmp_path / "o/pkg/io/load.json").read_text())
-    assert doc.source == str(tmp_path / "src/pkg/io/load.py") and doc.module.qualname == "<module>"
+    assert doc.source == str(tmp_path / "src/pkg/io/load.py")
+    assert doc.module.qualname == "<module>"
 
 
 def test_walked_empty_file_does_not_warn(tmp_path, capsys):
@@ -265,7 +274,9 @@ def test_function_selects_module(tmp_path):
     src = write(tmp_path, "s.py", "def f(): pass\nmain()\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--function", "<module>"]) == 0
     doc = from_json((tmp_path / "o/s.json").read_text())
-    assert doc.functions == [] and doc.module is not None and doc.schema_version == 3
+    assert doc.functions == []
+    assert doc.module is not None
+    assert doc.schema_version == 3
     assert main([str(src), "-o", str(tmp_path / "o2"), "-f", "json", "--function", "f"]) == 0
     assert from_json((tmp_path / "o2/s.json").read_text()).module is None
 
@@ -297,7 +308,8 @@ def test_syntax_error_only_file_has_no_nothing_to_chart(tmp_path, capsys):
     src = write(tmp_path, "s.py", "x = = 1\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
     err = capsys.readouterr().err
-    assert "syntax error outside functions" in err and "nothing to chart" not in err
+    assert "syntax error outside functions" in err
+    assert "nothing to chart" not in err
 
 
 def test_json_has_module_name_from_walk(tmp_path):
@@ -312,7 +324,8 @@ def test_directory_run_writes_call_graph_with_cross_file_edge(tmp_path):
     write(tmp_path / "src/pkg", "app.py", "from .lib import g\ndef f():\n    g()\n")
     assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json", "dot"]) == 0
     dot = (tmp_path / "o/callgraph.dot").read_text()
-    assert "label=pkg.app" in dot.replace('"', "") and "-> " in dot
+    assert "label=pkg.app" in dot.replace('"', "")
+    assert "-> " in dot
     call = from_json((tmp_path / "o/pkg/app.json").read_text()).functions[0].calls[0]
     assert (call.target.module, call.target.qualname) == ("pkg.lib", "g")
 
@@ -343,7 +356,8 @@ def test_reserved_callgraph_key(tmp_path, capsys):
     src = write(tmp_path, "callgraph.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o")]) == 1
     err = capsys.readouterr().err
-    assert "reserved for the call graph" in err and not (tmp_path / "o").exists()
+    assert "reserved for the call graph" in err
+    assert not (tmp_path / "o").exists()
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--no-call-graph"]) == 0
 
 

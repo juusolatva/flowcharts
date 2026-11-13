@@ -27,7 +27,8 @@ def test_nodes_have_shapes_and_tooltips():
 
 def test_edge_labels():
     src = to_dot(chart_of(IF_SRC))
-    assert "label=True" in src and "label=False" in src
+    assert "label=True" in src
+    assert "label=False" in src
 
 
 def test_label_escaping():
@@ -58,7 +59,8 @@ def test_renders_whole_fixture():  # every fixture chart is valid DOT
 def test_exception_edges_are_dashed():
     src = to_dot(chart_of("def f():\n    try:\n        a()\n    except E:\n        h()\n"))
     dashed = [line for line in src.splitlines() if "style=dashed" in line]
-    assert len(dashed) == 1 and "label=exception" in dashed[0]
+    assert len(dashed) == 1
+    assert "label=exception" in dashed[0]
 
 
 def _module_chart() -> Chart:

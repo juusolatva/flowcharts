@@ -21,7 +21,8 @@ def test_sequential_body_and_implicit_end():
         ("print(a)", "g(b)", None),
         ("g(b)", "end", None),
     }
-    assert c.nodes[0].id == "f#start" and c.nodes[0].kind is NodeKind.START
+    assert c.nodes[0].id == "f#start"
+    assert c.nodes[0].kind is NodeKind.START
 
 
 def test_return_and_raise_end_the_path():
@@ -68,7 +69,8 @@ VARS = """
 
 def test_variables_hidden_unless_call():
     labels = {n.label for n in chart_of(VARS).nodes}
-    assert "total = sum(xs)" in labels and not {"n = 0", "n += 1"} & labels
+    assert "total = sum(xs)" in labels
+    assert not {"n = 0", "n += 1"} & labels
 
 
 def test_variables_shown_with_option():
@@ -102,7 +104,8 @@ def test_qualnames_and_duplicates():
     )
     assert [c.qualname for c in doc.functions] == ["top", "A.m", "A.m.inner", "A.x", "A.x@L9", "co"]
     co = doc.functions[-1]
-    assert co.is_async and co.nodes[0].label == "async def co()"
+    assert co.is_async
+    assert co.nodes[0].label == "async def co()"
     assert doc.functions[4].nodes[0].id == "A.x@L9#start"
 
 
@@ -239,7 +242,8 @@ def test_reveal_applies_per_block():
                 n = 1
     """)
     labels = {n.label for n in c.nodes}
-    assert "n = 1" in labels and "n = 0" not in labels
+    assert "n = 1" in labels
+    assert "n = 0" not in labels
 
 
 def test_function_body_of_only_assignments_is_shown():
@@ -254,4 +258,5 @@ def test_diagnostic_renders_like_errors():
 
 def test_parse_returns_result_without_warnings():
     result = PythonFrontend().parse(b"def f(): pass\n", "t.py", ChartOptions())
-    assert isinstance(result, ParseResult) and result.warnings == ()
+    assert isinstance(result, ParseResult)
+    assert result.warnings == ()

@@ -56,7 +56,8 @@ def test_missing_graphviz_reported_once_for_module_and_functions(tmp_path, monke
     monkeypatch.setattr("pyflowcharts.output.render", boom)
     w = Writer(tmp_path, ["svg"])
     w.write(parse("def f(): pass\nmain()\n"), PurePosixPath("m"))
-    assert w.graphviz_missing and len(capsys.readouterr().err.splitlines()) == 1
+    assert w.graphviz_missing
+    assert len(capsys.readouterr().err.splitlines()) == 1
 
 
 def test_unwritable_directory_reported_once(tmp_path, capsys):
@@ -64,7 +65,8 @@ def test_unwritable_directory_reported_once(tmp_path, capsys):
     blocker.write_text("not a directory")
     w = Writer(blocker, ["json", "mermaid"])
     w.write(parse("def f(): pass\ndef g(): pass\nmain()\n"), PurePosixPath("m"))
-    assert w.write_failed and capsys.readouterr().err.count("cannot write") == 1
+    assert w.write_failed
+    assert capsys.readouterr().err.count("cannot write") == 1
 
 
 def test_write_callgraph(tmp_path):

@@ -72,7 +72,8 @@ def test_unreadable_directory_argument_gets_only_the_error(tmp_path):
         e = expand([tmp_path / "locked"], [])
     finally:
         (tmp_path / "locked").chmod(0o755)
-    assert len(e.errors) == 1 and e.warnings == []
+    assert len(e.errors) == 1
+    assert e.warnings == []
 
 
 def test_explicit_files_pass_through(tmp_path):
@@ -138,9 +139,11 @@ def test_collisions(tmp_path):
     explicit_and_walked = expand([tmp_path / "a/x.py", tmp_path / "b"], []).inputs
     assert "both map to 'x'" in collision_error(explicit_and_walked)
     msg = collision_error(expand([tmp_path / "pkg"], []).inputs)  # longer key first
-    assert "maps to 'mod' and" in msg and "share the directory 'mod'" in msg
+    assert "maps to 'mod' and" in msg
+    assert "share the directory 'mod'" in msg
     msg = collision_error(expand([tmp_path / "pkg/mod.py", tmp_path / "t"], []).inputs)
-    assert "maps to 'mod' and" in msg and "share the directory 'mod'" in msg  # shorter first
+    assert "maps to 'mod' and" in msg
+    assert "share the directory 'mod'" in msg  # shorter first
     assert collision_error(expand([tmp_path / "q"], []).inputs) is None
 
 

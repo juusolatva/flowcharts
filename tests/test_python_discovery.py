@@ -26,7 +26,9 @@ def test_qualnames_duplicates_and_async():
     """)
     expected = ["top", "A.m", "A.m.inner", "A.x", "A.x@L9", "co", "under_if"]
     assert [f.qualname for f in fs] == expected
-    assert fs[-2].is_async and fs[2].enclosing is fs[1] and fs[1].enclosing is None
+    assert fs[-2].is_async
+    assert fs[2].enclosing is fs[1]
+    assert fs[1].enclosing is None
     assert fs[1].name == "m"
 
 
