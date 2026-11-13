@@ -112,6 +112,7 @@ The resolver lives in `frontends/python/calls.py`. It is static and best-effort 
 The resolver builds one table of bindings per **scope**: the module, and each function. A scope's bindings are:
 
 - **definitions**: the `def`s and `class`es directly in it (including inside its `if`/`try`/`with`/loop blocks, but not inside nested functions or classes), each mapped to its qualname (`outer.inner`, `outer.C`). Definitions come from discovery, so they include functions skipped for syntax errors; calls to those still resolve to a candidate, and stay unresolved only because the linker does not index them.
+- **parameters** of a function (every kind, including `*args`, `**kwargs` and keyword-only ones): they bind the name to nothing resolvable, so the lookup stops there and gives `[]` unless the same scope also defines or imports the name.
 - **imports** in it (same block rule): each bound name maps to a list of import bindings in source order, so `try: import a` / `except ImportError: import b as a` keeps both. A binding is one of:
   - `from m import n` → binds `n` to *name* `(m, n)`; `from m import n as a` binds `a` to the same.
   - `import x.y.z` → binds `x` to *module* `x`, and records the dotted prefixes `x.y` and `x.y.z` as modules reachable through `x`.
@@ -147,7 +148,7 @@ Split the callee chain `a.b.….m` at its first part `a`:
 
 ### Not handled (documented limits)
 
-Shadowing by local assignment (`f = other; f()` still resolves to `def f`), inheritance, decorators that replace a function, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m`. Duplicate qualnames (`A.x@L9`) resolve to the first definition (`A.x`).
+Shadowing by local assignment or by `for`/`with … as`/`except … as` targets (`f = other; f()` still resolves to `def f`), inheritance, decorators that replace a function, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m`. Duplicate qualnames (`A.x@L9`) resolve to the first definition (`A.x`).
 
 ## Linker (`calls.py`)
 
