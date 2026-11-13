@@ -1,5 +1,12 @@
 # flowcharts
 
+[![CI](https://github.com/juusolatva/flowcharts/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/juusolatva/flowcharts/actions/workflows/ci.yml)
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=juusolatva_flowcharts&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=juusolatva_flowcharts)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=juusolatva_flowcharts&metric=coverage)](https://sonarcloud.io/summary/new_code?id=juusolatva_flowcharts)
+[![Ruff](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/astral-sh/ruff/main/assets/badge/v2.json)](https://github.com/astral-sh/ruff)
+[![Python](https://img.shields.io/badge/python-3.12%20%7C%203.13%20%7C%203.14-blue)](https://www.python.org/downloads/)
+[![License: MIT](https://img.shields.io/github/license/juusolatva/flowcharts)](LICENSE)
+
 `pyflowcharts` reads Python source files (or whole directories of them) and draws a **control-flow flowchart for every function**: branches, loops, `try`/`except`/`finally`, `match`, `with`, returns and raises. The start node shows the function's parameters, return nodes show the returned value, and variable assignments can optionally be shown too. A file whose top level does work, such as a script with an `if __name__ == "__main__":` block, also gets a module-level chart. Each run also draws a **call graph** of the charted functions, clustered by file. Charts are written as SVG/PNG images, DOT, Mermaid, and JSON.
 
 The JSON output (schema version 3) is the stable, machine-readable format. It holds the full graph, source locations and every call with its resolved target, and is meant for other tools, such as a future GUI explorer.
