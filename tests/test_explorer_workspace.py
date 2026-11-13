@@ -208,7 +208,8 @@ def test_undecodable_file_becomes_error_entry(tmp_path):
     ws = make([m])
     entry = ws.current().entries[0]
     assert entry.doc is None
-    assert entry.error is not None and "null bytes" in entry.error
+    assert entry.error is not None
+    assert "null bytes" in entry.error
     assert entry.empty is False
     assert entry.functions == ()
     assert entry.error in ws.current().messages

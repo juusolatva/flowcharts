@@ -98,7 +98,7 @@ class Handler(BaseHTTPRequestHandler):
     server: ExplorerServer
 
     def log_message(self, format: str, *args: Any) -> None:
-        pass
+        """Stay silent: per-request logging would flood the terminal."""
 
     def handle(self) -> None:
         try:

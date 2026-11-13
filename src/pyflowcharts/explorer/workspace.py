@@ -85,11 +85,12 @@ def snapshot_json(snapshot: Snapshot) -> dict[str, Any]:
     }
 
 
-def _stat(path: Path) -> tuple[Any, ...]:
+def _stat(path: Path) -> tuple[int | None, int | None]:
+    """``(mtime_ns, size)``, or ``(None, None)`` when ``stat()`` fails."""
     try:
         st = path.stat()
     except OSError:
-        return ("unreadable",)
+        return (None, None)
     return (st.st_mtime_ns, st.st_size)
 
 
