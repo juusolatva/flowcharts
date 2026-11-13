@@ -1,4 +1,5 @@
 import { buildCallIndex, distinctTargets, resolveTarget } from "../lib/callindex.mjs";
+import { opensSearch } from "../lib/keys.mjs";
 import { formatHash, parseHash } from "../lib/routing.mjs";
 import { fallbackFunction, nodeForLine } from "../lib/sourcemap.mjs";
 import { splitCallgraphId } from "../lib/svgids.mjs";
@@ -178,8 +179,7 @@ window.addEventListener("hashchange", () => {
   show();
 });
 document.addEventListener("keydown", (event) => {
-  const tag = event.target.tagName;
-  if (event.key !== "/" || tag === "INPUT" || tag === "TEXTAREA") return;
+  if (!opensSearch(event)) return;
   event.preventDefault();
   sidebar.focusSearch();
 });
