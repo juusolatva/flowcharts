@@ -98,7 +98,7 @@ def test_missing_graphviz(tmp_path, monkeypatch, capsys):
     def boom(*args, **kwargs):
         raise graphviz.ExecutableNotFound(["dot"])
 
-    monkeypatch.setattr("pyflowcharts.cli.render", boom)
+    monkeypatch.setattr("pyflowcharts.output.render", boom)
     src = write(tmp_path, "m.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "json"]) == 2
     assert "Graphviz" in capsys.readouterr().err and (tmp_path / "o/m.json").exists()
