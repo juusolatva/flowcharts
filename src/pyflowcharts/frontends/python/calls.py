@@ -84,10 +84,15 @@ type _Binding = _Name | _Module
 @dataclass
 class _Scope:
     """A module's or function's bindings: definitions (name → kind and qualname, first
-    wins) and imports (name → bindings in source order)."""
+    wins), imports (name → bindings in source order) and parameters (bound to nothing we
+    can resolve, but they stop the lookup)."""
 
     definitions: dict[str, tuple[str, str]] = field(default_factory=dict)
     imports: dict[str, list[_Binding]] = field(default_factory=dict)
+    parameters: frozenset[str] = frozenset()
+
+    def binds(self, name: str) -> bool:
+        return name in self.definitions or name in self.imports or name in self.parameters
 
     def define(self, name: str, kind: str, qualname: str) -> None:
         self.definitions.setdefault(name, (kind, qualname))
@@ -132,7 +137,7 @@ class Resolver:
                     scope.define(name, "def", qualname)
                     if cls is not None:
                         self._classes[child.id] = cls
-                    inner = self._scopes[child.id] = _Scope()
+                    inner = self._scopes[child.id] = _Scope(parameters=_parameters(child))
                     self._index(child, qualname + ".", inner, None)
                 case "class_definition":
                     qualname = prefix + _name(child)
@@ -195,9 +200,7 @@ class Resolver:
         yield self._module
 
     def _lookup(self, name: str, scope: Found | None) -> _Scope | None:
-        return next(
-            (s for s in self._chain(scope) if name in s.definitions or name in s.imports), None
-        )
+        return next((s for s in self._chain(scope) if s.binds(name)), None)
 
     def _own(self, qualname: str) -> list[CallRef]:
         return [CallRef(self.info.name, qualname)] if self.info.name else []
@@ -257,6 +260,25 @@ def _parts(callee: Node) -> list[str]:
                 return []
             return [*head, _text(attr)]
     return []
+
+
+def _parameters(func: Node) -> frozenset[str]:
+    params = func.child_by_field_name("parameters")
+    names = (_parameter_name(p) for p in params.named_children) if params is not None else ()
+    return frozenset(name for name in names if name)
+
+
+def _parameter_name(param: Node) -> str:
+    """``x``, ``x=1``, ``x: T``, ``x: T = 1``, ``*x``, ``**x`` and ``*x: T`` give ``x``;
+    separators give ``""``."""
+    if param.type == "identifier":
+        return _text(param)
+    if (name := param.child_by_field_name("name")) is not None:
+        return _text(name)
+    for child in param.named_children:
+        if child.type in ("identifier", "list_splat_pattern", "dictionary_splat_pattern"):
+            return _parameter_name(child)
+    return ""
 
 
 def _text(node: Node) -> str:

@@ -273,6 +273,10 @@ def f():
             "helper",
             [("pkg.mod", "f.helper")],
         ),
+        # parameters bind their names in the function's scope (no false edge)
+        ("def callback(): pass\ndef run(callback):\n    callback()\n", "run", "callback", []),
+        ("class C: pass\ndef run(C):\n    C.s()\n", "run", "C.s", []),
+        ("def g(): pass\ndef run(g):\n    def inner():\n        g()\n", "run.inner", "g", []),
         # a definition and an import in one scope: definition first, then imports
         (
             "from m import g\ndef g(): pass\ndef f():\n    g()\n",
@@ -327,3 +331,18 @@ def test_skipped_function_case_is_really_skipped():
     r = PythonFrontend().parse(src.encode(), "t.py", ChartOptions(), PurePosixPath("pkg/mod"))
     assert [w.qualname for w in r.warnings] == ["f.helper"]
     assert "f" in [c.qualname for c in r.document.functions]
+
+
+def test_every_parameter_kind_shadows():
+    defs = "".join(f"def {n}(): pass\n" for n in "abcdef")
+    src = defs + "def run(x, a=1, *b, c: int = 2, **d):\n    a(); b(); c(); d(); e()\n"
+    src += "def s(*f: int):\n    f()\n"
+    d = doc_of(src, key="m")
+    assert [(c.text, c.candidates) for c in fn(d, "run").calls][:4] == [
+        ("a", []),
+        ("b", []),
+        ("c", []),
+        ("d", []),
+    ]
+    assert [r.qualname for r in fn(d, "run").calls[4].candidates] == ["e"]  # not a parameter
+    assert fn(d, "s").calls[0].candidates == []

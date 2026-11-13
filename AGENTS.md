@@ -81,4 +81,4 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - Handlers are assumed to catch whatever reaches them: the uncaught path out of a `try` with handlers is not drawn, and the `try` node itself has no exception edges.
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Class bodies are charted only through their methods.
-- Call resolution is static and best-effort: shadowing by local assignment, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled.
+- Call resolution is static and best-effort: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled.

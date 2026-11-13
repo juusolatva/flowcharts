@@ -78,7 +78,7 @@ Every chart's JSON lists its calls: the node each call is written in, the callee
 
 Calls are resolved statically: names defined in the file (innermost function scope first), `self.method()` and `cls.method()` inside a class, `Class.method()`, and `import` / `from … import` (absolute and relative) into other files of the same run. Module names come from the walked paths, so walk the import root: `pyflowcharts src/` (not `src/mypkg/`) for a `src` layout.
 
-Not resolved: shadowing by local assignment, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.method`/`cls.method`. Such calls are still listed, with no target.
+A parameter named like a function hides it, as in Python. Not resolved: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.method`/`cls.method`. Such calls are still listed, with no target.
 
 ### Exit codes
 
