@@ -76,12 +76,17 @@ def watch(
     log: Callable[[str], None] = print,
 ) -> None:
     """Poll for file changes until ``stop`` is set; log and wake the streams on each re-parse."""
+    last_error: str | None = None
     while not stop.is_set():
         try:
             changed = workspace.refresh()
         except Exception as exc:  # noqa: BLE001 - a failed poll must not end the watcher
-            log(f"error: refresh failed: {exc}")
+            message = f"error: refresh failed: {exc}"
+            if message != last_error:
+                log(message)
+            last_error = message
         else:
+            last_error = None
             if changed:
                 log(summary(workspace.current()))
                 server.notify()

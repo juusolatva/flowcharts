@@ -371,3 +371,30 @@ def test_non_ascii_qualname_reaches_api_percent_encoded(running_server, tmp_path
     assert status == 200
     assert header(headers, "Content-Type") == "image/svg+xml"
     assert b"<svg" in body
+
+
+def test_watch_logs_a_repeating_error_once_and_again_after_recovery():
+    outcomes = [PermissionError("denied")] * 3 + [False, PermissionError("denied")]
+
+    class Failing:
+        def refresh(self) -> bool:
+            outcome = outcomes.pop(0)
+            if isinstance(outcome, Exception):
+                raise outcome
+            return outcome
+
+    lines: list[str] = []
+    watch(Failing(), FakeServer(), OneLoopStop(5), log=lines.append)
+    assert lines == ["error: refresh failed: denied"] * 2
+
+
+def test_watch_logs_a_changed_error_message():
+    outcomes = [PermissionError("denied"), OSError("gone")]
+
+    class Failing:
+        def refresh(self) -> bool:
+            raise outcomes.pop(0)
+
+    lines: list[str] = []
+    watch(Failing(), FakeServer(), OneLoopStop(2), log=lines.append)
+    assert lines == ["error: refresh failed: denied", "error: refresh failed: gone"]
