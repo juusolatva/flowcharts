@@ -6,7 +6,7 @@ export const isIgnorable = (error) => error?.name === "AbortError" || error inst
 
 // Every data request carries ?g=<generation>. Accepting a newer generation aborts the requests
 // of the older one; a 409 or a newer generation event triggers a single shared refetch.
-export function createApi({ onState, onBusy, onError }) {
+export function createApi({ onState, onBusy, onError, onOk }) {
   const tracker = createTracker();
   let controller = new AbortController();
   let inflight = null;
@@ -17,6 +17,7 @@ export function createApi({ onState, onBusy, onError }) {
       const response = await fetch("/api/state");
       if (!response.ok) throw new Error(`/api/state: HTTP ${response.status}`);
       const state = await response.json();
+      onOk();
       if (tracker.needsRefetch(state.generation)) {
         controller.abort();
         controller = new AbortController();

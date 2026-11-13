@@ -58,7 +58,10 @@ export function createSidebar({ tree, search, warnings, onOpen }) {
     active = Math.min(active, Math.max(matches.length - 1, 0));
     const items = matches.map((m, i) => {
       const a = link(m.skipped ? `⚠ ${m.label}` : m.label, chartHref(m.key, m.qualname));
-      if (i === active) a.className = "active";
+      if (i === active) {
+        a.className = "active";
+        queueMicrotask(() => a.scrollIntoView({ block: "nearest" }));
+      }
       return el("li", {}, a);
     });
     tree.replaceChildren(items.length ? el("ul", { class: "matches" }, ...items) : el("p", { class: "muted", text: "No matches." }));
@@ -88,12 +91,13 @@ export function createSidebar({ tree, search, warnings, onOpen }) {
 
   function open(match) {
     search.value = "";
+    draw();
     onOpen({ view: "chart", key: match.key, qualname: match.qualname });
   }
 
   search.addEventListener("input", () => { active = 0; draw(); });
   search.addEventListener("keydown", (event) => {
-    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+    if ((event.key === "ArrowDown" || event.key === "ArrowUp") && search.value.trim()) {
       event.preventDefault();
       active = Math.max(0, Math.min(matches.length - 1, active + (event.key === "ArrowDown" ? 1 : -1)));
       drawMatches();

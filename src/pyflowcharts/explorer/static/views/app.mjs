@@ -24,9 +24,10 @@ let selected = null;
 let token = 0;
 let busy = false;
 let live = "reconnecting";
+let failed = false;
 
 function paintStatus() {
-  const value = busy ? "reparsing" : live;
+  const value = busy ? "reparsing" : failed ? "reconnecting" : live;
   $("status").dataset.state = value;
   $("status").title = value === "reparsing" ? "re-parsing" : value;
 }
@@ -35,13 +36,24 @@ const navigate = (target) => { location.hash = formatHash(target); };
 
 const api = createApi({
   onState(newState) {
-    state = newState;
-    index = buildCallIndex(newState);
-    sidebar.render(newState, route);
-    show();
+    try {
+      state = newState;
+      index = buildCallIndex(newState);
+      sidebar.render(newState, route);
+      show();
+    } catch (error) {
+      console.error(error);
+      notice(`Could not draw the explorer: ${error.message}`);
+    }
   },
+  onOk() { failed = false; },
   onBusy(value) { busy = value; paintStatus(); },
-  onError() { live = "reconnecting"; paintStatus(); },
+  onError(error) {
+    console.error(error);
+    failed = true;
+    paintStatus();
+    if (!state) notice(`Could not load the explorer state: ${error.message}`);
+  },
 });
 
 const sidebar = createSidebar({

@@ -4,7 +4,7 @@ export function el(tag, props = {}, ...children) {
   for (const [name, value] of Object.entries(props)) {
     if (name === "class") node.className = value;
     else if (name === "text") node.textContent = value;
-    else if (name.startsWith("on")) node.addEventListener(name.slice(2), value);
+    else if (/^on[a-z]+$/.test(name) && typeof value === "function") node.addEventListener(name.slice(2), value);
     else node.setAttribute(name, value);
   }
   node.append(...children);

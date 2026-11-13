@@ -36,7 +36,7 @@ export function mountSvg(stage, text, { onClick, onDblClick, hasCall = () => fal
     const id = idAt(event);
     if (id !== null) onDblClick?.(id);
   });
-  const panzoom = attachPanZoom(stage, svg);
+  const panzoom = attachPanZoom(svg);
   let selected = null;
   return {
     ...panzoom,

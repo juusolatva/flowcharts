@@ -1,12 +1,15 @@
+import { createDragTracker } from "../lib/drag.mjs";
+
 const DRAG_THRESHOLD = 4;
 const WHEEL_STEP = 1.15;
 
 // Pan and zoom by editing the SVG's viewBox. A drag of more than DRAG_THRESHOLD px suppresses
-// the click/dblclick that follows it (the flag is cleared by the next pointerdown).
-export function attachPanZoom(container, svg) {
+// the click that follows it (the flag is cleared by that click or the next pointerdown).
+export function attachPanZoom(svg) {
   const home = svg.viewBox.baseVal;
   const initial = [home.x, home.y, home.width, home.height];
   let suppress = false;
+  const drag = createDragTracker(DRAG_THRESHOLD);
 
   const toUser = (clientX, clientY) =>
     new DOMPoint(clientX, clientY).matrixTransform(svg.getScreenCTM().inverse());
@@ -32,16 +35,15 @@ export function attachPanZoom(container, svg) {
   svg.addEventListener("pointerdown", (event) => {
     if (event.button !== 0) return;
     suppress = false;
-    let last = { x: event.clientX, y: event.clientY };
-    const start = { ...last };
+    drag.begin(event.clientX, event.clientY);
     const move = (e) => {
-      if (!suppress && Math.hypot(e.clientX - start.x, e.clientY - start.y) <= DRAG_THRESHOLD) return;
+      const delta = drag.move(e.clientX, e.clientY);
+      if (!delta) return;
       suppress = true;
       const scale = svg.getScreenCTM().a;
       const box = svg.viewBox.baseVal;
-      box.x -= (e.clientX - last.x) / scale;
-      box.y -= (e.clientY - last.y) / scale;
-      last = { x: e.clientX, y: e.clientY };
+      box.x -= delta.dx / scale;
+      box.y -= delta.dy / scale;
     };
     const up = () => {
       window.removeEventListener("pointermove", move);
@@ -53,12 +55,14 @@ export function attachPanZoom(container, svg) {
     window.addEventListener("pointercancel", up);
   });
 
+  // on the svg itself, so a stale flag dies with the svg when the stage is re-rendered
   for (const type of ["click", "dblclick"]) {
-    container.addEventListener(
+    svg.addEventListener(
       type,
       (event) => {
         if (!suppress) return;
-        event.stopPropagation();
+        if (type === "click") suppress = false;
+        event.stopImmediatePropagation();
         event.preventDefault();
       },
       true,
