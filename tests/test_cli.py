@@ -58,6 +58,17 @@ def test_function_filter_and_unknown(tmp_path, capsys):
     assert "available: a, b" in capsys.readouterr().err
 
 
+def test_function_matches_unicode_equivalent_spellings(tmp_path):
+    # The source spells the name decomposed; charts carry Python's normalized name.
+    src = write(tmp_path, "m.py", "def cafe\u0301(): pass\ndef b(): pass\n")
+    for i, name in enumerate(["cafe\u0301", "caf\u00e9"]):
+        out = tmp_path / f"o{i}"
+        assert main([str(src), "-o", str(out), "-f", "json", "--function", name]) == 0
+        assert [c.qualname for c in from_json((out / "m.json").read_text()).functions] == [
+            "caf\u00e9"
+        ]
+
+
 def test_function_accepts_several_names(tmp_path):
     src = write(tmp_path, "m.py", "def a(): pass\ndef b(): pass\ndef c(): pass\n")
     for i, flags in enumerate([["--function", "a", "b"], ["--function", "a", "--function", "b"]]):

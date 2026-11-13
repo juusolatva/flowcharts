@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import unicodedata
 from collections.abc import Sequence
 from dataclasses import replace
 from pathlib import Path
@@ -157,8 +158,9 @@ def _select(
 ) -> list[tuple[Input, ParseResult]] | None:
     """Keep only the charts named by ``--function`` (and the warnings that concern them).
 
-    ``<module>`` names module charts. Skipped charts count as known names. Returns ``None``
-    after reporting unknown ones.
+    ``<module>`` names module charts. Skipped charts count as known names. Names match when
+    they are Unicode-equivalent (NFKC), so a name typed as the source spells it finds the
+    chart even when the frontend normalized it. Returns ``None`` after reporting unknown ones.
     """
     available: list[str] = []
     for _, result in results:
@@ -167,22 +169,28 @@ def _select(
             available.append(MODULE_QUALNAME)
         available += [f"{w.qualname} (skipped)" for w in result.warnings if w.qualname]
     available = list(dict.fromkeys(available))
-    known = {name.removesuffix(" (skipped)") for name in available}
-    unknown = [name for name in dict.fromkeys(names) if name not in known]
+    known = {_name_key(name.removesuffix(" (skipped)")) for name in available}
+    unknown = [name for name in dict.fromkeys(names) if _name_key(name) not in known]
     if unknown:
         shown = ", ".join(repr(name) for name in unknown)
         listing = ", ".join(available) or "(none)"
         print(f"error: unknown function {shown}; available: {listing}", file=sys.stderr)
         return None
-    wanted = set(names)
+    wanted = {_name_key(name) for name in names}
     selected = []
     for item, result in results:
         doc = result.document
         document = replace(
             doc,
-            functions=[c for c in doc.functions if c.qualname in wanted],
+            functions=[c for c in doc.functions if _name_key(c.qualname) in wanted],
             module=doc.module if MODULE_QUALNAME in wanted else None,
         )
-        warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
+        warnings = tuple(
+            w for w in result.warnings if w.qualname is None or _name_key(w.qualname) in wanted
+        )
         selected.append((item, replace(result, document=document, warnings=warnings)))
     return selected
+
+
+def _name_key(name: str) -> str:
+    return unicodedata.normalize("NFKC", name)
