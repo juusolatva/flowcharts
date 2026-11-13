@@ -209,6 +209,7 @@ def test_directory_input_mirrors_tree(tmp_path):
         "pkg/io/load.json",
         "pkg/io/load.dot",
         "pkg/io/load/f.dot",
+        "callgraph.dot",
     }
     doc = from_json((tmp_path / "o/pkg/io/load.json").read_text())
     assert doc.source == str(tmp_path / "src/pkg/io/load.py") and doc.module.qualname == "<module>"
@@ -303,3 +304,56 @@ def test_json_has_module_name_from_walk(tmp_path):
     write(tmp_path / "src/pkg", "mod.py", "def f(): pass\n")
     assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
     assert from_json((tmp_path / "o/pkg/mod.json").read_text()).module_name == "pkg.mod"
+
+
+def test_directory_run_writes_call_graph_with_cross_file_edge(tmp_path):
+    write(tmp_path / "src/pkg", "__init__.py", "")
+    write(tmp_path / "src/pkg", "lib.py", "def g(): pass\n")
+    write(tmp_path / "src/pkg", "app.py", "from .lib import g\ndef f():\n    g()\n")
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json", "dot"]) == 0
+    dot = (tmp_path / "o/callgraph.dot").read_text()
+    assert "label=pkg.app" in dot.replace('"', "") and "-> " in dot
+    call = from_json((tmp_path / "o/pkg/app.json").read_text()).functions[0].calls[0]
+    assert (call.target.module, call.target.qualname) == ("pkg.lib", "g")
+
+
+def test_json_only_writes_no_call_graph(tmp_path):
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    assert not (tmp_path / "o/callgraph.dot").exists()
+
+
+def test_no_call_graph_option(tmp_path):
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "dot", "--no-call-graph"]) == 0
+    assert (tmp_path / "o/m/f.dot").exists()
+    assert not (tmp_path / "o/callgraph.dot").exists()
+
+
+def test_function_filter_limits_picture_but_not_targets(tmp_path):
+    src = write(tmp_path, "m.py", "def g(): pass\ndef f():\n    g()\n")
+    out = str(tmp_path / "o")
+    assert main([str(src), "-o", out, "-f", "json", "dot", "--function", "f"]) == 0
+    assert "0#g" not in (tmp_path / "o/callgraph.dot").read_text()
+    call = from_json((tmp_path / "o/m.json").read_text()).functions[0].calls[0]
+    assert call.target.qualname == "g"
+
+
+def test_reserved_callgraph_key(tmp_path, capsys):
+    src = write(tmp_path, "callgraph.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o")]) == 1
+    err = capsys.readouterr().err
+    assert "reserved for the call graph" in err and not (tmp_path / "o").exists()
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--no-call-graph"]) == 0
+
+
+def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, capsys):
+    def boom(*a, **k):
+        raise graphviz.ExecutableNotFound(["dot"])
+
+    monkeypatch.setattr("pyflowcharts.output.render", boom)
+    monkeypatch.setattr("pyflowcharts.output.render_callgraph", boom)
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "dot"]) == 2
+    assert (tmp_path / "o/callgraph.dot").exists()
+    assert len(capsys.readouterr().err.splitlines()) == 1  # reported once
