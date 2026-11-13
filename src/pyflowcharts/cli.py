@@ -9,9 +9,10 @@ from dataclasses import replace
 from pathlib import Path
 
 from pyflowcharts import __version__
+from pyflowcharts.cli_options import add_chart_options, chart_options
 from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.inputs import Input, collision_error, expand
-from pyflowcharts.ir import MODULE_QUALNAME, ChartOptions
+from pyflowcharts.ir import MODULE_QUALNAME
 from pyflowcharts.output import Writer
 from pyflowcharts.pipeline import parse_all
 
@@ -29,7 +30,12 @@ EXIT_NO_GRAPHVIZ = 2
 
 
 def main(argv: Sequence[str] | None = None) -> int:
-    args = _parser().parse_args(argv)
+    raw = sys.argv[1:] if argv is None else list(argv)
+    if raw and raw[0] == "explore":
+        from pyflowcharts.explorer import main as explore
+
+        return explore(raw[1:])
+    args = _parser().parse_args(raw)
     formats = list(dict.fromkeys(args.format))  # de-duplicate, keep order
     expansion = expand(args.paths, args.exclude)
     # The key is only taken when a picture will actually be written.
@@ -41,7 +47,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for message in expansion.warnings + expansion.errors:
         print(message, file=sys.stderr)
-    parsed = parse_all(expansion.inputs, _options(args))
+    parsed = parse_all(expansion.inputs, chart_options(args))
     for message in parsed.read_errors:
         print(message, file=sys.stderr)
     results = parsed.results
@@ -67,16 +73,6 @@ def main(argv: Sequence[str] | None = None) -> int:
     return EXIT_NO_GRAPHVIZ if writer.graphviz_missing else EXIT_OK
 
 
-def _options(args: argparse.Namespace) -> ChartOptions:
-    return ChartOptions(
-        show_variables=args.variables,
-        show_parameters=not args.no_parameters,
-        show_returns=not args.no_returns,
-        max_label_length=args.max_label,
-        show_module=not args.no_module,
-    )
-
-
 def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
     """Print each file's warnings and the "nothing to chart" notes; ``False`` if any file
     had warnings."""
@@ -98,7 +94,10 @@ def _nothing_to_chart(result: ParseResult) -> bool:
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="pyflowcharts",
-        description="Generate a control-flow flowchart for every function in Python files.",
+        description=(
+            "Generate a control-flow flowchart for every function in Python files. "
+            "Run 'pyflowcharts explore PATH…' to browse the charts in a local web app."
+        ),
         epilog=(
             "Put input paths before options that take several values (-f, --function, --exclude)."
         ),
@@ -123,14 +122,6 @@ def _parser() -> argparse.ArgumentParser:
         metavar="FORMAT",
         help=f"one or more of: {', '.join(FORMATS)} (default: svg json)",
     )
-    parser.add_argument("--variables", action="store_true", help="show plain variable assignments")
-    parser.add_argument(
-        "--no-parameters", action="store_true", help="hide parameters in the start node"
-    )
-    parser.add_argument(
-        "--no-returns", action="store_true", help="hide returned values in return nodes"
-    )
-    parser.add_argument("--no-module", action="store_true", help="never chart module-level code")
     parser.add_argument(
         "--no-call-graph", action="store_true", help="do not write the run's call graph picture"
     )
@@ -141,42 +132,9 @@ def _parser() -> argparse.ArgumentParser:
         metavar="QUALNAME",
         help="only chart these functions (e.g. 'load' or 'Inventory.find'); repeatable",
     )
-    parser.add_argument(
-        "--exclude",
-        nargs="+",
-        action="extend",
-        default=[],
-        type=_exclude_pattern,
-        metavar="GLOB",
-        help="skip matching files and directories when walking a directory; a pattern "
-        "without '/' matches names, one with '/' the relative path, and a trailing '/' "
-        "matches directories only; repeatable",
-    )
-    parser.add_argument(
-        "--max-label",
-        type=_positive_int,
-        default=ChartOptions().max_label_length,
-        metavar="N",
-        help="truncate node labels to N characters (default: 60)",
-    )
+    add_chart_options(parser)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     return parser
-
-
-def _exclude_pattern(text: str) -> str:
-    if text.rstrip("/") == "":
-        raise argparse.ArgumentTypeError(f"must name a file or directory, got {text!r}")
-    return text
-
-
-def _positive_int(text: str) -> int:
-    try:
-        value = int(text)
-    except ValueError:
-        value = 0
-    if value < 1:
-        raise argparse.ArgumentTypeError(f"must be a positive integer, got {text!r}")
-    return value
 
 
 def _select(
