@@ -13,6 +13,11 @@ from pyflowcharts.frontends.python import PythonFrontend
 FRONTENDS: tuple[Frontend, ...] = (PythonFrontend(),)
 
 
+def supported_extensions() -> tuple[str, ...]:
+    """Every registered frontend's file extensions (lower-case), in registry order."""
+    return tuple(ext for frontend in FRONTENDS for ext in frontend.extensions)
+
+
 def frontend_for_path(path: Path) -> Frontend:
     suffix = path.suffix.lower()
     for frontend in FRONTENDS:
@@ -28,4 +33,5 @@ __all__ = [
     "SourceError",
     "UnsupportedLanguageError",
     "frontend_for_path",
+    "supported_extensions",
 ]
