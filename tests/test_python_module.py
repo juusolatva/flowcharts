@@ -92,15 +92,28 @@ def test_stray_break_skips_module_chart():
     assert r.warnings[0].qualname == "<module>"
 
 
-def test_unsupported_top_level_syntax_skips_module_chart():
-    src = "type Box[T = int] = list[T]\ndef g(): pass\n"  # no work: the error check must run first
+def _needs_pep696(src: str) -> None:
     try:
         ast.parse(src)
     except SyntaxError:
         pytest.skip("this interpreter does not accept PEP 696 defaults")
+
+
+def test_unsupported_top_level_syntax_skips_module_chart():
+    src = "type Box[T = int] = list[T]\nmain()\ndef g(): pass\n"
+    _needs_pep696(src)
     r = parse(src)
     assert r.document.module is None and [c.qualname for c in r.document.functions] == ["g"]
     assert [str(w) for w in r.warnings] == [
         "t.py:1: warning: unsupported syntax in module code; module chart skipped"
     ]
     assert r.warnings[0].qualname == "<module>"
+
+
+def test_unsupported_syntax_without_top_level_work_is_quiet():
+    # No module chart would be drawn, so the misread syntax changes nothing: no warning.
+    src = "class A[T = int]:\n    def m(self):\n        return 1\ntype Box[T = int] = list[T]\n"
+    _needs_pep696(src)
+    r = parse(src)
+    assert r.document.module is None and r.warnings == ()
+    assert [c.qualname for c in r.document.functions] == ["A.m"]
