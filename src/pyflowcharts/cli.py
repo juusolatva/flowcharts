@@ -32,13 +32,6 @@ EXIT_NO_GRAPHVIZ = 2
 def main(argv: Sequence[str] | None = None) -> int:
     args = _parser().parse_args(argv)
     formats = list(dict.fromkeys(args.format))  # de-duplicate, keep order
-    options = ChartOptions(
-        show_variables=args.variables,
-        show_parameters=not args.no_parameters,
-        show_returns=not args.no_returns,
-        max_label_length=args.max_label,
-        show_module=not args.no_module,
-    )
     expansion = expand(args.paths, args.exclude)
     # The key is only taken when a picture will actually be written.
     pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
@@ -47,25 +40,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         print(collision, file=sys.stderr)
         return EXIT_ERROR
 
-    status = EXIT_OK
     for message in expansion.warnings + expansion.errors:
         print(message, file=sys.stderr)
-    if expansion.errors:
-        status = EXIT_ERROR
-
-    results: list[tuple[Input, ParseResult]] = []
-    for item in expansion.inputs:
-        try:
-            results.append((item, _parse_file(item.path, options, item.key)))
-        except SourceError as err:
-            print(err, file=sys.stderr)
-            status = EXIT_ERROR
-
-    linked = link([result.document for _, result in results])
-    results = [
-        (item, replace(result, document=doc))
-        for (item, result), doc in zip(results, linked, strict=True)
-    ]
+    results, parsed_ok = _parse_all(expansion.inputs, _options(args))
+    ok = parsed_ok and not expansion.errors
 
     # Decided on the full result, so a file that only lacks the requested functions is quiet.
     empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
@@ -73,13 +51,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         results = _select(results, args.function)
         if results is None:
             return EXIT_ERROR
-
-    for item, result in results:
-        for warning in result.warnings:
-            print(warning, file=sys.stderr)
-            status = EXIT_ERROR
-        if item.path in empty:
-            print(f"warning: {item.path}: nothing to chart", file=sys.stderr)
+    if not _report(results, empty):
+        ok = False
 
     writer = Writer(args.output, formats)
     for item, result in results:
@@ -87,11 +60,52 @@ def main(argv: Sequence[str] | None = None) -> int:
     if not args.no_call_graph:
         writer.write_callgraph([result.document for _, result in results])
 
-    if writer.write_failed:
-        status = EXIT_ERROR
-    elif writer.graphviz_missing and status == EXIT_OK:
-        status = EXIT_NO_GRAPHVIZ
-    return status
+    if writer.write_failed or not ok:
+        return EXIT_ERROR
+    return EXIT_NO_GRAPHVIZ if writer.graphviz_missing else EXIT_OK
+
+
+def _options(args: argparse.Namespace) -> ChartOptions:
+    return ChartOptions(
+        show_variables=args.variables,
+        show_parameters=not args.no_parameters,
+        show_returns=not args.no_returns,
+        max_label_length=args.max_label,
+        show_module=not args.no_module,
+    )
+
+
+def _parse_all(
+    inputs: list[Input], options: ChartOptions
+) -> tuple[list[tuple[Input, ParseResult]], bool]:
+    """Parse every input and link the calls across the run. The flag is ``False`` when a
+    file could not be read (already reported)."""
+    ok = True
+    results: list[tuple[Input, ParseResult]] = []
+    for item in inputs:
+        try:
+            results.append((item, _parse_file(item.path, options, item.key)))
+        except SourceError as err:
+            print(err, file=sys.stderr)
+            ok = False
+    linked = link([result.document for _, result in results])
+    return [
+        (item, replace(result, document=doc))
+        for (item, result), doc in zip(results, linked, strict=True)
+    ], ok
+
+
+def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
+    """Print each file's warnings and the "nothing to chart" notes; ``False`` if any file
+    had warnings."""
+    ok = True
+    for item, result in results:
+        for warning in result.warnings:
+            print(warning, file=sys.stderr)
+            ok = False
+        if item.path in empty:
+            print(f"warning: {item.path}: nothing to chart", file=sys.stderr)
+    return ok
 
 
 def _nothing_to_chart(result: ParseResult) -> bool:
