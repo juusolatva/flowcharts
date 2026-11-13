@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import unicodedata
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from pathlib import PurePosixPath
@@ -26,10 +27,11 @@ class ModuleInfo:
 def module_info(key: PurePosixPath) -> ModuleInfo:
     """``pkg/io/load`` → ``pkg.io.load`` in package ``pkg.io``; ``pkg/__init__`` → ``pkg``
     in package ``pkg``; a bare ``__init__`` has no module name."""
-    package = key.parts[:-1]
-    if key.name == "__init__":
+    parts = tuple(unicodedata.normalize("NFKC", part) for part in key.parts)  # as imports are
+    package = parts[:-1]
+    if parts[-1:] == ("__init__",):
         return ModuleInfo(".".join(package), package)
-    return ModuleInfo(".".join(key.parts), package)
+    return ModuleInfo(".".join(parts), package)
 
 
 def call_roots(stmt: Node) -> list[Node]:

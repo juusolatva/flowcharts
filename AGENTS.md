@@ -100,7 +100,7 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 
 Found in a code review and not yet done. Each is small; pick one up as its own change.
 
-- **Module size.** `frontends/python/statements.py` (~385 lines) and `frontends/python/calls.py` (~315) are past the ~300-line guideline. Candidates: move the match-pattern helpers (`_irrefutable`, `_capture`) and the docstring/type-alias helpers out of `statements.py`; move the import tables (`_Scope`, `_Module`, `_Name`, `_Class`, `_through`) out of `calls.py`.
+- **Module size.** `frontends/python/statements.py` (~385 lines) and `frontends/python/calls.py` (~360) are past the ~300-line guideline. Candidates: move the match-pattern helpers (`_irrefutable`, `_capture`) and the docstring/type-alias helpers out of `statements.py`; move the import tables (`_Scope`, `_Module`, `_Name`, `_Class`, `_through`) out of `calls.py`.
 - **`if`/`elif` duplication.** `_if` and `_if_chain` in `statements.py` build the same branch shape twice, and `stmt()` matches `"elif_clause"`, which never reaches it (an `elif_clause` only appears inside an `if_statement`, never in a block).
 - **Unguarded `next()`.** The `with_statement` and `finally_clause` cases in `statements.py` call `next(...)` without a default. If tree-sitter error recovery in module code ever yields a `with` without a `with_clause` or a `finally` without a block, this raises `StopIteration`. Start with a test that tries to reproduce it.
 - **Case-only clashes between files.** `inputs.collision_error` compares output keys exactly, so `A.py` and `a.py` in one directory are not reported, though their outputs overwrite each other on case-insensitive file systems. (Function names in one file already give a warning, from `output.py`.)

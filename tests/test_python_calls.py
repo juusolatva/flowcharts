@@ -16,6 +16,7 @@ from pyflowcharts.ir import ChartOptions
         ("pkg/__init__", "pkg", ("pkg",)),
         ("util", "util", ()),
         ("__init__", "", ()),
+        ("cafe\u0301/m", "caf\u00e9.m", ("caf\u00e9",)),  # normalized like import names
     ],
 )
 def test_module_info(key, name, package):
