@@ -1,5 +1,6 @@
 """The fixed table of static files the explorer serves."""
 
+import functools
 from importlib import resources
 from importlib.resources.abc import Traversable
 from pathlib import PurePosixPath
@@ -25,8 +26,9 @@ def _walk(directory: Traversable, prefix: str = "") -> list[str]:
     return names
 
 
+@functools.cache
 def asset_names() -> frozenset[str]:
-    """POSIX names, relative to ``static/``, of every servable file."""
+    """POSIX names, relative to ``static/``, of every servable file (fixed once installed)."""
     return frozenset(_walk(_static()))
 
 

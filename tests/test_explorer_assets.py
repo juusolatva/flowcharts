@@ -27,3 +27,7 @@ def test_every_static_file_has_a_known_type():
     assert files
     assert {p.suffix for p in files} <= set(CONTENT_TYPES)
     assert asset_names() == {p.relative_to(root).as_posix() for p in files}
+
+
+def test_asset_names_are_computed_once():
+    assert asset_names() is asset_names()
