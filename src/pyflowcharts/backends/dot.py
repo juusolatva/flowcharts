@@ -6,7 +6,7 @@ from typing import Literal
 
 import graphviz
 
-from pyflowcharts.ir import EXCEPTION_LABEL, FunctionChart, NodeKind
+from pyflowcharts.ir import EXCEPTION_LABEL, Chart, NodeKind
 
 SHAPES: dict[NodeKind, str] = {
     NodeKind.START: "oval",
@@ -19,9 +19,10 @@ SHAPES: dict[NodeKind, str] = {
 }
 
 
-def to_digraph(chart: FunctionChart) -> graphviz.Digraph:
+def to_digraph(chart: Chart) -> graphviz.Digraph:
     graph = graphviz.Digraph(
-        chart.qualname,
+        # nohtml: graphviz would leave a name like "<module>" unquoted, as an HTML-like ID.
+        graphviz.nohtml(chart.qualname),
         graph_attr={"rankdir": "TB"},
         node_attr={"fontname": "Helvetica"},
         edge_attr={"fontname": "Helvetica"},
@@ -42,10 +43,10 @@ def to_digraph(chart: FunctionChart) -> graphviz.Digraph:
     return graph
 
 
-def to_dot(chart: FunctionChart) -> str:
+def to_dot(chart: Chart) -> str:
     return to_digraph(chart).source
 
 
-def render(chart: FunctionChart, fmt: Literal["svg", "png"]) -> bytes:
+def render(chart: Chart, fmt: Literal["svg", "png"]) -> bytes:
     """Render with Graphviz. Raises ``graphviz.ExecutableNotFound`` if ``dot`` is missing."""
     return to_digraph(chart).pipe(format=fmt)

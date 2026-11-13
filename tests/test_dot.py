@@ -6,7 +6,7 @@ from conftest import chart_of
 
 from pyflowcharts.backends.dot import SHAPES, render, to_dot
 from pyflowcharts.frontends.python import PythonFrontend
-from pyflowcharts.ir import ChartOptions
+from pyflowcharts.ir import MODULE_QUALNAME, Chart, ChartOptions
 
 needs_dot = pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
 IF_SRC = "def f(x):\n    if x > 0:\n        return 1\n    g()\n"
@@ -59,3 +59,17 @@ def test_exception_edges_are_dashed():
     src = to_dot(chart_of("def f():\n    try:\n        a()\n    except E:\n        h()\n"))
     dashed = [line for line in src.splitlines() if "style=dashed" in line]
     assert len(dashed) == 1 and "label=exception" in dashed[0]
+
+
+def _module_chart() -> Chart:
+    c = chart_of("def f():\n    g()\n")
+    return Chart(qualname=MODULE_QUALNAME, location=c.location, nodes=c.nodes, edges=c.edges)
+
+
+def test_module_graph_name_is_quoted():
+    assert to_dot(_module_chart()).startswith('digraph "<module>" {')
+
+
+@needs_dot
+def test_module_svg_title_keeps_brackets():
+    assert b"<title>&lt;module&gt;</title>" in render(_module_chart(), "svg")

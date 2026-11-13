@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from pyflowcharts.ir import EXCEPTION_LABEL, FunctionChart, NodeKind
+from pyflowcharts.ir import EXCEPTION_LABEL, Chart, NodeKind
 
 # "{t}" is replaced by the escaped label.
 SHAPES: dict[NodeKind, str] = {
@@ -25,7 +25,7 @@ def _escape(text: str) -> str:
     return text
 
 
-def to_mermaid(chart: FunctionChart) -> str:
+def to_mermaid(chart: Chart) -> str:
     ids = {node.id: f"n{i}" for i, node in enumerate(chart.nodes)}
     lines = ["flowchart TD"]
     for node in chart.nodes:
