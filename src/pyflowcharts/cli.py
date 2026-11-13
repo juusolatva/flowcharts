@@ -6,15 +6,14 @@ import argparse
 import sys
 from collections.abc import Sequence
 from dataclasses import replace
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from pyflowcharts import __version__
-from pyflowcharts.calls import link
-from pyflowcharts.frontends import SourceError, frontend_for_path
 from pyflowcharts.frontends.base import ParseResult
 from pyflowcharts.inputs import Input, collision_error, expand
 from pyflowcharts.ir import MODULE_QUALNAME, ChartOptions
 from pyflowcharts.output import Writer
+from pyflowcharts.pipeline import parse_all
 
 FORMATS = ("json", "dot", "svg", "png", "mermaid")
 DEFAULT_FORMATS = ["svg", "json"]
@@ -42,8 +41,11 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     for message in expansion.warnings + expansion.errors:
         print(message, file=sys.stderr)
-    results, parsed_ok = _parse_all(expansion.inputs, _options(args))
-    ok = parsed_ok and not expansion.errors
+    parsed = parse_all(expansion.inputs, _options(args))
+    for message in parsed.read_errors:
+        print(message, file=sys.stderr)
+    results = parsed.results
+    ok = not parsed.read_errors and not expansion.errors
 
     # Decided on the full result, so a file that only lacks the requested functions is quiet.
     empty = {item.path for item, result in results if item.explicit and _nothing_to_chart(result)}
@@ -73,26 +75,6 @@ def _options(args: argparse.Namespace) -> ChartOptions:
         max_label_length=args.max_label,
         show_module=not args.no_module,
     )
-
-
-def _parse_all(
-    inputs: list[Input], options: ChartOptions
-) -> tuple[list[tuple[Input, ParseResult]], bool]:
-    """Parse every input and link the calls across the run. The flag is ``False`` when a
-    file could not be read (already reported)."""
-    ok = True
-    results: list[tuple[Input, ParseResult]] = []
-    for item in inputs:
-        try:
-            results.append((item, _parse_file(item.path, options, item.key)))
-        except SourceError as err:
-            print(err, file=sys.stderr)
-            ok = False
-    linked = link([result.document for _, result in results])
-    return [
-        (item, replace(result, document=doc))
-        for (item, result), doc in zip(results, linked, strict=True)
-    ], ok
 
 
 def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
@@ -231,14 +213,3 @@ def _select(
         warnings = tuple(w for w in result.warnings if w.qualname is None or w.qualname in wanted)
         selected.append((item, replace(result, document=document, warnings=warnings)))
     return selected
-
-
-def _parse_file(path: Path, options: ChartOptions, key: PurePosixPath) -> ParseResult:
-    frontend = frontend_for_path(path)
-    try:
-        source = path.read_bytes()
-    except FileNotFoundError:
-        raise SourceError(str(path), "no such file") from None
-    except OSError as err:
-        raise SourceError(str(path), err.strerror or str(err)) from None
-    return frontend.parse(source, str(path), options, key)
