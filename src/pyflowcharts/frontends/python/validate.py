@@ -38,7 +38,7 @@ def validate(src: Source, functions: list[Found], path: str) -> Validation:
     skipped: dict[str, Diagnostic] = {}
     for func in functions:
         ast_line = None if file_ok else _check_function(src.data, func, functions)
-        ts_line = _first_error_line(func.node)
+        ts_line = first_error_line(func.node)
         if ast_line is None and ts_line is None:
             continue
         # Code the interpreter accepts but the grammar does not (newer syntax) is not an error.
@@ -88,9 +88,10 @@ def _stub_all(data: bytes, functions: list[Found]) -> bytes:
     return data
 
 
-def _first_error_line(node: Node) -> int | None:
-    """Line of the first ``ERROR``/``MISSING`` node in the function's own subtree (nested
-    functions excluded), or ``None``."""
+def first_error_line(node: Node) -> int | None:
+    """Line of the first ``ERROR``/``MISSING`` node in ``node``'s subtree, with function
+    definitions below it excluded (for a function: its own code; for the module root: the
+    code outside every function), or ``None``."""
     if not node.has_error:
         return None
     for child in node.children:
@@ -98,6 +99,6 @@ def _first_error_line(node: Node) -> int | None:
             return child.start_point.row + 1
         if child.type == "function_definition":
             continue
-        if (line := _first_error_line(child)) is not None:
+        if (line := first_error_line(child)) is not None:
             return line
     return None
