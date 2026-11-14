@@ -92,6 +92,8 @@ private slots:
         QVERIFY(model.target({}, "0#f") == ChartRef(0, "f"));
         QVERIFY(!model.target({}, "-1#f").has_value());
         QVERIFY(!model.target({}, "oops#f").has_value());
+        for (const auto &id : {"", "0", "#f", "0#", "0#missing", "999#f"})
+            QVERIFY2(!model.target({}, id).has_value(), id);
         QVERIFY(!model.target({0, "f"}, "outer").has_value());
     }
     void rejectsUnknownSchemaAndMalformedSnapshotsAtomically() {
