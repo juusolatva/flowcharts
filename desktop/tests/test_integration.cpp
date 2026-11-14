@@ -86,6 +86,62 @@ private slots:
             QCOMPARE(source->extraSelections().first().cursor.blockNumber(), line + 2);
         }
     }
+    void historyDropsDeletedCharts_data() {
+        QTest::addColumn<bool>("currentDeleted");
+        QTest::newRow("inactive") << false;
+        QTest::newRow("current") << true;
+    }
+    void historyDropsDeletedCharts() {
+        QFETCH(bool, currentDeleted);
+        const auto uv = QStandardPaths::findExecutable("uv");
+        if (uv.isEmpty())
+            QSKIP("uv is needed for the real Python worker integration test");
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        const auto path = directory.filePath("history.py");
+        writeSource(
+            path, "def first():\n    pass\n\ndef removed():\n    pass\n\ndef last():\n    pass\n");
+        MainWindow window(uv, {"run", "--project", FLOWCHARTS_PROJECT_DIR, "--no-sync", "python",
+                               "-u", "-m", "pyflowcharts.desktop"});
+        window.openPaths({path});
+        auto *graph = window.findChild<GraphView *>();
+        auto *source = window.findChild<SourceView *>();
+        auto *browser = window.findChild<ChartBrowser *>();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "0#first"), 15000);
+        for (const auto &name : {"first", "removed", "last"})
+            browser->chartSelected(0, name);
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "last#start"), 10000);
+        QAction *back = nullptr, *forward = nullptr;
+        for (auto *action : window.findChildren<QAction *>()) {
+            if (action->text() == "Back")
+                back = action;
+            if (action->text() == "Forward")
+                forward = action;
+        }
+        QVERIFY(back && forward);
+        if (currentDeleted) {
+            back->trigger();
+            QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "removed#start"), 10000);
+        }
+        writeSource(path, "# edited\ndef first():\n    pass\n\ndef last():\n    pass\n");
+        QTRY_VERIFY_WITH_TIMEOUT(source->toPlainText().contains("# edited"), 10000);
+        if (currentDeleted) {
+            QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "first#start"), 10000);
+            QVERIFY(forward->isEnabled());
+            forward->trigger();
+        }
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "last#start"), 10000);
+        back->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "first#start"), 10000);
+        back->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "0#first"), 10000);
+        QVERIFY(!back->isEnabled());
+        forward->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "first#start"), 10000);
+        forward->trigger();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "last#start"), 10000);
+        QVERIFY(!forward->isEnabled());
+    }
     void realWorkerRendersNavigatesAndReloads() {
         const auto uv = QStandardPaths::findExecutable("uv");
         if (uv.isEmpty())

@@ -71,15 +71,29 @@ void MainWindow::applySnapshot(const QJsonObject &snapshot) {
     m_diagnostics->setPlainText(diagnostics.join('\n'));
     if (!diagnostics.isEmpty())
         m_diagnosticsDock->show();
-    for (int i = 0; i < history.size(); ++i)
-        m_history[i] =
-            m_workspace.findChart(history[i].first, history[i].second).value_or(ChartRef{});
+    const int oldIndex = m_historyIndex;
+    m_history.clear();
+    m_historyIndex = -1;
+    for (int i = 0; i < history.size(); ++i) {
+        const auto ref = history[i].first.isEmpty()
+                             ? std::optional<ChartRef>{ChartRef{}}
+                             : m_workspace.findChart(history[i].first, history[i].second);
+        if (!ref)
+            continue;
+        m_history.append(*ref);
+        if (i <= oldIndex)
+            m_historyIndex = m_history.size() - 1;
+    }
+    m_back->setEnabled(m_historyIndex > 0);
+    m_forward->setEnabled(m_historyIndex + 1 < m_history.size());
     if (m_file) {
         showFile(*m_file);
         return;
     }
-    const auto ref = m_workspace.findChart(previousSource, previousName).value_or(ChartRef{});
-    showChart(ref, m_history.isEmpty());
+    const auto ref = previousSource.isEmpty() ? std::optional<ChartRef>{ChartRef{}}
+                                              : m_workspace.findChart(previousSource, previousName);
+    const auto fallback = m_historyIndex >= 0 ? m_history[m_historyIndex] : ChartRef{};
+    showChart(ref.value_or(fallback), m_history.isEmpty());
     if (m_current.document < 0)
         setWindowTitle("Call graph — Flowcharts");
 }
