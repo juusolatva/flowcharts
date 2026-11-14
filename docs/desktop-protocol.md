@@ -43,6 +43,8 @@ client watchdog disconnect it and show a diagnostic.
 
 The worker accepts requests up to 1 MiB; the client accepts response frames up to 64 MiB. These
 are per-frame limits, not per-read limits. Neither endpoint assumes a pipe read equals a frame.
+Invalid UTF-8, malformed JSON and oversized request frames receive `invalid_request` with a null
+ID; the worker discards only that frame and continues processing subsequent requests.
 
 ## Methods
 

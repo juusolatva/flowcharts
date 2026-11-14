@@ -231,6 +231,37 @@ def test_worker_entrypoint_uses_only_protocol_on_stdout():
     assert result.stderr == ""
 
 
+@pytest.mark.parametrize(
+    "bad_frame",
+    [b"\xff\n", b'{"method":"\xff"}\n', b"\xf0\x9f\n", b"\xff" * (2**20 + 10) + b"\n"],
+    ids=["invalid-byte", "invalid-json-string", "truncated-codepoint", "oversized-invalid-frame"],
+)
+def test_worker_rejects_invalid_utf8_and_reads_next_frame(tmp_path, bad_frame):
+    path = tmp_path / "café.py"
+    path.write_text("def café():\n    pass\n", encoding="utf-8")
+    opening = json.dumps(
+        {"protocol_version": 1, "id": 1, "method": "open", "params": {"paths": [str(path)]}},
+        ensure_ascii=False,
+    ).encode("utf-8")
+    result = subprocess.run(
+        [sys.executable, "-m", "pyflowcharts.desktop"],
+        env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
+        input=opening + b"\n" + bad_frame + b'{"protocol_version":1,"id":2,"method":"refresh"}\n',
+        capture_output=True,
+        timeout=10,
+        check=False,
+    )
+    assert result.returncode == 0, result.stderr.decode("utf-8")
+    responses = [json.loads(line) for line in result.stdout.splitlines()]
+    assert len(responses) == 3
+    assert responses[0]["ok"]
+    assert responses[1]["error"]["code"] == "invalid_request"
+    assert responses[1]["id"] is None
+    assert responses[2]["id"] == 2
+    assert responses[2]["result"] == {"changed": False}
+    assert result.stderr == b""
+
+
 @pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
 def test_real_layout_includes_native_drawing_geometry(tmp_path):
     session, _, _ = open_file(tmp_path)

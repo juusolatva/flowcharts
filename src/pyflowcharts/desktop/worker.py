@@ -6,7 +6,7 @@ import dataclasses
 import json
 from collections.abc import Callable
 from pathlib import Path
-from typing import Any, TextIO
+from typing import Any, BinaryIO, TextIO
 
 from pyflowcharts.backends.callgraph import to_callgraph_dot
 from pyflowcharts.backends.dot import to_dot
@@ -154,19 +154,23 @@ class Session:
         return {"generation": snapshot.generation, "layout": self._cache[key]}
 
 
-def serve(input_stream: TextIO, output_stream: TextIO, session: Session | None = None) -> None:
+def serve(
+    input_stream: BinaryIO | TextIO, output_stream: TextIO, session: Session | None = None
+) -> None:
     """One response per line, including malformed requests. EOF shuts down the worker."""
     session = session or Session()
     while line := input_stream.readline(MAX_REQUEST_BYTES + 1):
-        if len(line.encode("utf-8")) > MAX_REQUEST_BYTES:
-            while line and not line.endswith("\n"):
+        if len(line if isinstance(line, bytes) else line.encode("utf-8")) > MAX_REQUEST_BYTES:
+            while line and line[-1:] not in ("\n", b"\n"):
                 line = input_stream.readline(MAX_REQUEST_BYTES + 1)
             response = _error(None, "invalid_request", "Request exceeds 1 MiB")
         else:
             try:
-                payload = json.loads(line)
+                payload = json.loads(line.decode("utf-8") if isinstance(line, bytes) else line)
             except ValueError:
-                response = _error(None, "invalid_request", "Expected one JSON object per line")
+                response = _error(
+                    None, "invalid_request", "Expected one UTF-8 JSON object per line"
+                )
             else:
                 response = session.request(payload)
         output_stream.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
