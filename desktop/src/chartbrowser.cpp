@@ -44,7 +44,12 @@ ChartBrowser::ChartBrowser(QWidget *parent)
     m_tree->setUniformRowHeights(true);
     m_tree->setAccessibleName("Files and charts");
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &text) {
+        const QPersistentModelIndex current(m_tree->currentIndex());
+        const QSignalBlocker blocker(m_tree->selectionModel());
         m_filter->setFilterFixedString(text);
+        // Filtering can choose a neighbouring row; that is not user navigation.
+        if (!current.isValid())
+            m_tree->setCurrentIndex({});
         m_tree->expandAll();
     });
     connect(m_tree->selectionModel(), &QItemSelectionModel::currentChanged, this,
