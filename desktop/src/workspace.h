@@ -16,6 +16,17 @@ struct ChartRef {
     }
 };
 
+struct FileRef {
+    QString source;
+    QString qualname; // Empty for a file; otherwise the selected skipped function.
+};
+
+struct FileView {
+    int document = -1;
+    QString message;
+    int line = 0;
+};
+
 // Semantic data only. Geometry, widget state and subprocess management live elsewhere.
 class Workspace {
 public:
@@ -25,6 +36,7 @@ public:
     QStringList diagnostics() const;
     QString sourceText(int document) const;
     QString sourcePath(int document) const;
+    std::optional<FileView> fileView(const FileRef &ref) const;
     QString key(const ChartRef &ref) const;
     QJsonObject chart(const ChartRef &ref) const;
     QJsonObject node(const ChartRef &ref, const QString &id) const;

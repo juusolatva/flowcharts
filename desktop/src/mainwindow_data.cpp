@@ -25,6 +25,7 @@ void MainWindow::openPaths(const QStringList &paths) {
     m_history.clear();
     m_historyIndex = -1;
     m_hasChart = false;
+    m_file.reset();
     m_graphRequest = -1;
     m_refreshRequest = -1;
     m_back->setEnabled(false);
@@ -73,6 +74,10 @@ void MainWindow::applySnapshot(const QJsonObject &snapshot) {
     for (int i = 0; i < history.size(); ++i)
         m_history[i] =
             m_workspace.findChart(history[i].first, history[i].second).value_or(ChartRef{});
+    if (m_file) {
+        showFile(*m_file);
+        return;
+    }
     const auto ref = m_workspace.findChart(previousSource, previousName).value_or(ChartRef{});
     showChart(ref, m_history.isEmpty());
     if (m_current.document < 0)
@@ -86,6 +91,7 @@ void MainWindow::showChart(const ChartRef &ref, bool record) {
         return;
     const bool same = m_hasChart && m_graph->chartKey() == m_workspace.key(ref);
     m_current = ref;
+    m_file.reset();
     m_hasChart = true;
     m_browser->selectChart(ref);
     if (record && (m_historyIndex < 0 || !(m_history[m_historyIndex] == ref))) {
@@ -117,14 +123,19 @@ void MainWindow::showChart(const ChartRef &ref, bool record) {
     m_graphRequest = m_engine.request("graph", params);
 }
 
-void MainWindow::showFile(int document, const QString &message, int line) {
+void MainWindow::showFile(FileRef ref) {
+    m_file = ref;
     m_hasChart = false;
     m_graphRequest = -1;
-    m_graph->clearGraph(message.isEmpty() ? "Choose a function or the module chart" : message);
-    m_source->setPlainText(m_workspace.sourceText(document));
-    m_source->highlightLines(line, line);
+    const auto view = m_workspace.fileView(ref).value_or(
+        FileView{-1, "Source file is no longer in the workspace", 0});
+    m_browser->selectFile(ref);
+    m_graph->clearGraph(view.message.isEmpty() ? "Choose a function or the module chart"
+                                               : view.message);
+    m_source->setPlainText(m_workspace.sourceText(view.document));
+    m_source->highlightLines(view.line, view.line);
     m_selection->clear();
-    setWindowTitle("Flowcharts");
+    setWindowTitle(ref.source + " — Flowcharts");
 }
 
 void MainWindow::selectNode(const QString &id) {

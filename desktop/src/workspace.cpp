@@ -39,6 +39,30 @@ QString Workspace::sourcePath(int index) const {
     return document(index)["document"].toObject()["source"].toString();
 }
 
+std::optional<FileView> Workspace::fileView(const FileRef &ref) const {
+    for (const auto &value : entries()) {
+        const auto entry = value.toObject();
+        if (entry["source"].toString() != ref.source)
+            continue;
+        FileView result;
+        if (entry["doc"].isDouble())
+            result.document = entry["doc"].toInt();
+        result.message = entry["error"].toString();
+        if (result.message.isEmpty() && !ref.qualname.isEmpty()) {
+            for (const auto &value : entry["skipped"].toArray()) {
+                const auto skipped = value.toObject();
+                if (skipped["qualname"].toString() == ref.qualname) {
+                    result.message = skipped["message"].toString();
+                    result.line = skipped["line"].toInt();
+                    break;
+                }
+            }
+        }
+        return result;
+    }
+    return std::nullopt;
+}
+
 QString Workspace::key(const ChartRef &ref) const {
     return ref.document < 0 ? "<callgraph>" : sourcePath(ref.document) + '\n' + ref.qualname;
 }

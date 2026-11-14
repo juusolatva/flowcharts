@@ -41,6 +41,40 @@ private slots:
         QVERIFY(model.findChart("/a.py", "f") == ChartRef(0, "f"));
         QVERIFY(model.chart({-1, {}}).isEmpty());
     }
+    void fileViewsUseStablePathsAndCurrentDiagnostics() {
+        auto snapshot = fixture();
+        snapshot["entries"] = QJsonArray{QJsonObject{
+            {"source", "/a.py"},
+            {"doc", 0},
+            {"skipped", QJsonArray{QJsonObject{
+                            {"qualname", "bad"}, {"message", "invalid break"}, {"line", 4}}}}}};
+        Workspace model;
+        QString error;
+        QVERIFY(model.setSnapshot(snapshot, error));
+        const auto file = model.fileView({"/a.py", {}});
+        QVERIFY(file.has_value());
+        QCOMPARE(file->document, 0);
+        QVERIFY(file->message.isEmpty());
+        const auto skipped = model.fileView({"/a.py", "bad"});
+        QVERIFY(skipped.has_value());
+        QCOMPARE(skipped->line, 4);
+        QCOMPARE(skipped->message, QString("invalid break"));
+        QVERIFY(!model.fileView({"/gone.py", {}}).has_value());
+        snapshot["entries"] = QJsonArray{
+            QJsonObject{{"source", "/a.py"}, {"doc", QJsonValue::Null}, {"error", "cannot read"}}};
+        QVERIFY(model.setSnapshot(snapshot, error));
+        const auto failed = model.fileView({"/a.py", "bad"});
+        QVERIFY(failed.has_value());
+        QCOMPARE(failed->document, -1);
+        QCOMPARE(failed->message, QString("cannot read"));
+        QCOMPARE(failed->line, 0);
+        snapshot["entries"] = QJsonArray{QJsonObject{{"source", "/a.py"}, {"doc", 0}}};
+        QVERIFY(model.setSnapshot(snapshot, error));
+        const auto fixed = model.fileView({"/a.py", "bad"});
+        QVERIFY(fixed.has_value());
+        QVERIFY(fixed->message.isEmpty());
+        QCOMPARE(fixed->line, 0);
+    }
     void choosesSmallestSpanAndKeepsFirstFinallyCopy() {
         Workspace model;
         QString error;

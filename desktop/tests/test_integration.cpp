@@ -32,6 +32,60 @@ static void writeSource(const QString &path, const QByteArray &text) {
 class IntegrationTest : public QObject {
     Q_OBJECT
 private slots:
+    void fileViewSurvivesRefresh_data() {
+        QTest::addColumn<bool>("skipped");
+        QTest::addColumn<bool>("previousChart");
+        QTest::newRow("file-after-chart") << false << true;
+        QTest::newRow("file-after-callgraph") << false << false;
+        QTest::newRow("skipped-after-chart") << true << true;
+        QTest::newRow("skipped-after-callgraph") << true << false;
+    }
+    void fileViewSurvivesRefresh() {
+        QFETCH(bool, skipped);
+        QFETCH(bool, previousChart);
+        const auto uv = QStandardPaths::findExecutable("uv");
+        if (uv.isEmpty())
+            QSKIP("uv is needed for the real Python worker integration test");
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        writeSource(directory.filePath("previous.py"), "def previous():\n    pass\n");
+        const auto path = directory.filePath("z.py");
+        const QByteArray text = "def selected():\n    pass\n\ndef broken():\n    break\n";
+        writeSource(path, text);
+        MainWindow window(uv, {"run", "--project", FLOWCHARTS_PROJECT_DIR, "--no-sync", "python",
+                               "-u", "-m", "pyflowcharts.desktop"});
+        window.show();
+        window.openPaths({directory.path()});
+        auto *graph = window.findChild<GraphView *>();
+        auto *source = window.findChild<SourceView *>();
+        auto *browser = window.findChild<ChartBrowser *>();
+        auto *tree = browser->findChild<QTreeView *>();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "0#previous"), 15000);
+        if (previousChart) {
+            browser->chartSelected(0, "previous");
+            QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "previous#start"), 10000);
+        }
+        auto file = tree->model()->index(2, 0);
+        QCOMPARE(file.data(Qt::ToolTipRole).toString(), path);
+        auto selected = skipped ? tree->model()->index(1, 0, file) : file;
+        QVERIFY(selected.isValid());
+        const auto selectedLabel = selected.data().toString();
+        tree->setCurrentIndex(selected);
+        QCOMPARE(source->toPlainText(), QString::fromUtf8(text));
+        const int line = skipped ? source->extraSelections().first().cursor.blockNumber() : 0;
+
+        // Inserting an earlier file also shifts the selected file's document index.
+        writeSource(directory.filePath("a.py"), "def added():\n    pass\n");
+        writeSource(path, "# edited\n\n" + text);
+        QTRY_VERIFY_WITH_TIMEOUT(source->toPlainText().contains("# edited"), 10000);
+        QVERIFY(!hasNode(graph, "previous#start"));
+        QVERIFY(!hasNode(graph, "0#previous"));
+        QCOMPARE(tree->currentIndex().data().toString(), selectedLabel);
+        if (skipped) {
+            QCOMPARE(source->extraSelections().size(), 1);
+            QCOMPARE(source->extraSelections().first().cursor.blockNumber(), line + 2);
+        }
+    }
     void realWorkerRendersNavigatesAndReloads() {
         const auto uv = QStandardPaths::findExecutable("uv");
         if (uv.isEmpty())

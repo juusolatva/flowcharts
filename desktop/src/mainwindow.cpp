@@ -45,7 +45,8 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
     menuBar()->findChild<QMenu *>("viewMenu")->addAction(browserDock->toggleViewAction());
     connect(m_browser, &ChartBrowser::chartSelected, this,
             [this](int doc, const QString &name) { showChart({doc, name}); });
-    connect(m_browser, &ChartBrowser::fileSelected, this, &MainWindow::showFile);
+    connect(m_browser, &ChartBrowser::fileSelected, this,
+            [this](const QString &source, const QString &name) { showFile({source, name}); });
     connect(m_graph, &GraphView::nodeSelected, this, &MainWindow::selectNode);
     connect(m_graph, &GraphView::nodeActivated, this, [this](const QString &id) {
         if (auto target = m_workspace.target(m_current, id))

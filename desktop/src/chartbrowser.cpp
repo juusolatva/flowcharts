@@ -11,7 +11,7 @@
 
 namespace flowcharts {
 namespace {
-enum Role { DocumentRole = Qt::UserRole + 1, QualnameRole, SearchRole, MessageRole, LineRole };
+enum Role { DocumentRole = Qt::UserRole + 1, QualnameRole, SearchRole, SourceRole, SkippedRole };
 
 QStandardItem *chartItem(const QString &label, int document, const QString &qualname,
                          const QString &search) {
@@ -55,9 +55,8 @@ ChartBrowser::ChartBrowser(QWidget *parent)
                     emit chartSelected(index.data(DocumentRole).toInt(),
                                        index.data(QualnameRole).toString());
                 else
-                    emit fileSelected(index.data(DocumentRole).toInt(),
-                                      index.data(MessageRole).toString(),
-                                      index.data(LineRole).toInt());
+                    emit fileSelected(index.data(SourceRole).toString(),
+                                      index.data(SkippedRole).toString());
             });
 }
 
@@ -77,9 +76,8 @@ void ChartBrowser::setWorkspace(const Workspace &workspace) {
         file->setIcon(style()->standardIcon(entry["error"].isString() ? QStyle::SP_MessageBoxWarning
                                                                       : QStyle::SP_FileIcon));
         file->setToolTip(path);
-        file->setData(document, DocumentRole);
+        file->setData(path, SourceRole);
         file->setData(key + ' ' + path, SearchRole);
-        file->setData(entry["error"].toString(), MessageRole);
         m_model->appendRow(file);
         if (entry["has_module"].toBool())
             file->appendRow(chartItem("<module>", document, "<module>", key));
@@ -92,10 +90,9 @@ void ChartBrowser::setWorkspace(const Workspace &workspace) {
             auto *item = new QStandardItem(skipped["qualname"].toString() + " (skipped)");
             item->setEditable(false);
             item->setIcon(style()->standardIcon(QStyle::SP_MessageBoxWarning));
-            item->setData(document, DocumentRole);
+            item->setData(path, SourceRole);
+            item->setData(skipped["qualname"].toString(), SkippedRole);
             item->setData(key + ' ' + skipped["qualname"].toString(), SearchRole);
-            item->setData(skipped["message"].toString(), MessageRole);
-            item->setData(skipped["line"].toInt(), LineRole);
             file->appendRow(item);
         }
     }
@@ -124,6 +121,26 @@ void ChartBrowser::selectChart(const ChartRef &ref) {
         }
     }
     m_tree->clearSelection();
+}
+
+void ChartBrowser::selectFile(const FileRef &ref) {
+    const QSignalBlocker blocker(m_tree->selectionModel());
+    for (int row = 0; row < m_model->rowCount(); ++row) {
+        auto *file = m_model->item(row);
+        if (file->data(SourceRole).toString() != ref.source)
+            continue;
+        auto *selected = file;
+        for (int child = 0; child < file->rowCount(); ++child) {
+            auto *item = file->child(child);
+            if (!ref.qualname.isEmpty() && item->data(SkippedRole).toString() == ref.qualname) {
+                selected = item;
+                break;
+            }
+        }
+        m_tree->setCurrentIndex(m_filter->mapFromSource(selected->index()));
+        return;
+    }
+    m_tree->setCurrentIndex({});
 }
 
 void ChartBrowser::focusSearch() {

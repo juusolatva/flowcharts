@@ -28,7 +28,7 @@ private:
     void acceptResult(qint64 id, const QString &method, const QJsonObject &result);
     void applySnapshot(const QJsonObject &snapshot);
     void showChart(const ChartRef &ref, bool record = true);
-    void showFile(int document, const QString &message, int line);
+    void showFile(FileRef ref);
     void selectNode(const QString &id);
     void navigate(int delta);
     void reportError(const QString &message);
@@ -39,6 +39,7 @@ private:
     QStringList m_paths;
     Workspace m_workspace;
     ChartRef m_current;
+    std::optional<FileRef> m_file;
     bool m_hasChart = false;
     qint64 m_openRequest = -1;
     qint64 m_graphRequest = -1;

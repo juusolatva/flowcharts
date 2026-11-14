@@ -17,10 +17,11 @@ public:
     explicit ChartBrowser(QWidget *parent = nullptr);
     void setWorkspace(const Workspace &workspace);
     void selectChart(const ChartRef &ref);
+    void selectFile(const FileRef &ref);
     void focusSearch();
 signals:
     void chartSelected(int document, const QString &qualname);
-    void fileSelected(int document, const QString &message, int line);
+    void fileSelected(const QString &source, const QString &qualname);
 
 private:
     QLineEdit *m_search;
