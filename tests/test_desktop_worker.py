@@ -2,6 +2,7 @@
 
 import io
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -214,8 +215,11 @@ def test_stream_recovers_after_bad_json_and_preserves_unicode(tmp_path):
 
 
 def test_worker_entrypoint_uses_only_protocol_on_stdout():
+    # Pytest's pythonpath setting is process-local; CI does not install the project.
+    env = {**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)}
     result = subprocess.run(
         [sys.executable, "-m", "pyflowcharts.desktop"],
+        env=env,
         input='{"protocol_version":1,"id":1,"method":"refresh"}\n',
         capture_output=True,
         text=True,
