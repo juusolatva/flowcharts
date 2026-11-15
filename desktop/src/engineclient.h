@@ -19,6 +19,7 @@ public:
     qint64 request(const QString &method, const QJsonObject &params);
     bool idle() const;
     bool running() const;
+    void setLayoutTimeout(int milliseconds) { m_layoutTimeout = milliseconds; }
 
 signals:
     void succeeded(qint64 id, const QString &method, const QJsonObject &result);
@@ -47,6 +48,7 @@ private:
     qint64 m_nextId = 1;
     bool m_failed = false;
     bool m_stopping = false;
+    int m_layoutTimeout = 120000;
 };
 
 } // namespace flowcharts

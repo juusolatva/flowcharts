@@ -44,6 +44,7 @@ private:
     qint64 m_openRequest = -1;
     qint64 m_graphRequest = -1;
     qint64 m_refreshRequest = -1;
+    QString m_refreshError; // Reported once until a refresh succeeds or another error occurs.
     QVector<ChartRef> m_history;
     int m_historyIndex = -1;
     ChartBrowser *m_browser;

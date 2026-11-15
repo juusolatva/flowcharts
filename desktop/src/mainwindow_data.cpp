@@ -28,6 +28,7 @@ void MainWindow::openPaths(const QStringList &paths) {
     m_file.reset();
     m_graphRequest = -1;
     m_refreshRequest = -1;
+    m_refreshError.clear();
     m_back->setEnabled(false);
     m_forward->setEnabled(false);
     m_openRequest = m_engine.request("open", {{"paths", QJsonArray::fromStringList(m_paths)}});
@@ -38,7 +39,10 @@ void MainWindow::acceptResult(qint64 id, const QString &method, const QJsonObjec
         if (id == m_openRequest)
             applySnapshot(result["snapshot"].toObject());
     } else if (method == "refresh") {
-        if (id == m_refreshRequest && result["changed"].toBool())
+        if (id != m_refreshRequest)
+            return;
+        m_refreshError.clear();
+        if (result["changed"].toBool())
             applySnapshot(result["snapshot"].toObject());
     } else if (method == "graph" && id == m_graphRequest) {
         if (result["generation"].toInt() != m_workspace.generation())

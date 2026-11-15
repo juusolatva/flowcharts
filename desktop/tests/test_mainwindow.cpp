@@ -1,3 +1,4 @@
+#include "graphview.h"
 #include "mainwindow.h"
 
 #include <QDockWidget>
@@ -74,6 +75,25 @@ private slots:
         window.openPaths({"/project"});
         QTRY_VERIFY(!dock->isVisible());
         QVERIFY(text->toPlainText().isEmpty());
+    }
+    void repeatedRefreshFailureIsReportedOnce() {
+        MainWindow window(fakeEngine(), {"--refresh-fails"});
+        window.show();
+        auto *dock = window.findChild<QDockWidget *>("diagnosticsDock");
+        auto *text = dock->findChild<QPlainTextEdit *>();
+        window.openPaths({"/project"});
+        QTRY_VERIFY_WITH_TIMEOUT(text->toPlainText().contains("refresh failed"), 5000);
+        dock->hide();
+        QTest::qWait(2500);
+        QCOMPARE(text->toPlainText().count("refresh failed"), 1);
+        QVERIFY(!dock->isVisible());
+    }
+    void failedOpenReplacesAnalysingPlaceholder() {
+        MainWindow window(fakeEngine(), {"--open-fails"});
+        window.show();
+        auto *graph = window.findChild<GraphView *>();
+        window.openPaths({"/project"});
+        QTRY_VERIFY(graph->message().contains("open failed"));
     }
 };
 QTEST_MAIN(MainWindowTest)

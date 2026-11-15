@@ -38,8 +38,12 @@ versions receive `unsupported_protocol`, not a best-effort interpretation.
 The GUI sends one request at a time. Waiting graph requests are coalesced so rapid navigation
 does not queue every intermediate layout. Opening a new workspace discards waiting requests
 for the old one. In-flight work can complete, but stale UI requests are ignored by ID. Normal
-engine errors do not close the session; malformed responses, process failure and the 120-second
-client watchdog disconnect it and show a diagnostic.
+engine errors do not close the session; malformed responses, process failure and the client
+watchdog disconnect it and show a diagnostic. The watchdog covers engine startup and `graph`
+requests (120 seconds; layout itself is limited to 30 seconds by the engine). `open` and
+`refresh` have no client deadline, since analysing a large workspace takes as long as it takes.
+A `refresh` failure that repeats on every poll is reported once, until a refresh succeeds or
+the message changes.
 
 The worker accepts requests of up to 1 MiB, not counting the newline; the client accepts response frames up to 512 MiB. These
 are per-frame limits, not per-read limits. Neither endpoint assumes a pipe read equals a frame.
@@ -47,7 +51,7 @@ Invalid UTF-8, malformed JSON and oversized request frames receive `invalid_requ
 ID; the worker discards only that frame and continues processing subsequent requests. That
 includes JSON nested too deeply for the decoder. An unexpected failure while handling a request
 (for example an `OSError` while re-scanning a directory) receives `internal_error` with the
-request's ID, and the session stays open.
+request's ID, and the session stays open. The worker writes the traceback to stderr.
 
 Responses are UTF-8. A file name whose bytes are not valid in the file-system encoding reaches
 the worker as lone surrogates (Python's `surrogateescape`); those are written as JSON `\uDCxx`

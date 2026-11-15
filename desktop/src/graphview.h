@@ -13,6 +13,7 @@ public:
     explicit GraphView(QWidget *parent = nullptr);
     void setGraph(const GraphLayout &graph, const QString &key);
     void clearGraph(const QString &message = {});
+    QString message() const { return m_message; }
     void selectNode(const QString &id);
     QString selectedNode() const;
     QString chartKey() const { return m_key; }

@@ -64,7 +64,13 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
                     (method == "open" && id != m_openRequest) ||
                     (method == "refresh" && id != m_refreshRequest))
                     return;
-                if (method == "graph")
+                if (method == "refresh") {
+                    // The poll retries every second; a lasting failure is reported once.
+                    if (message == m_refreshError)
+                        return;
+                    m_refreshError = message;
+                }
+                if (method == "graph" || method == "open")
                     m_graph->clearGraph(message);
                 reportError(message);
             });

@@ -25,9 +25,8 @@ EngineClient::EngineClient(QObject *parent) : QObject(parent) {
                      .arg(code)
                      .arg(QString::fromUtf8(m_stderr)));
     });
-    connect(&m_deadline, &QTimer::timeout, this, [this] {
-        fail("The analysis engine did not respond within 120 seconds. Restart it from File.");
-    });
+    connect(&m_deadline, &QTimer::timeout, this,
+            [this] { fail("The analysis engine stopped responding. Restart it from File."); });
 }
 
 EngineClient::~EngineClient() {
@@ -101,7 +100,10 @@ void EngineClient::dispatch() {
         fail("Could not send a request to the analysis engine");
         return;
     }
-    m_deadline.start(120000);
+    // Analysing a workspace takes as long as the workspace needs. A layout is bounded by the
+    // engine's own 30-second Graphviz limit, so a silent layout request means a hung engine.
+    if (m_active->method == "graph")
+        m_deadline.start(m_layoutTimeout);
 }
 
 void EngineClient::readOutput() {

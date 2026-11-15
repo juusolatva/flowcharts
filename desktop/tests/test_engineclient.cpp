@@ -40,6 +40,22 @@ private slots:
         QCOMPARE(success[0][0].toLongLong(), next);
         QVERIFY(fatal.isEmpty());
     }
+    void watchdogCoversLayoutButNotAnalysis() {
+        EngineClient client;
+        client.setLayoutTimeout(300);
+        QSignalSpy success(&client, &EngineClient::succeeded);
+        QSignalSpy fatal(&client, &EngineClient::fatalError);
+        client.start(QCoreApplication::applicationDirPath() + "/fake-engine",
+                     {"--refresh-delay=800", "--graph-delay=800"});
+        // Analysing a large workspace can take as long as it needs.
+        client.request("refresh", {});
+        QTRY_COMPARE_WITH_TIMEOUT(success.size(), 1, 3000);
+        QVERIFY(fatal.isEmpty());
+        // A layout has its own 30-second limit in the engine, so a silent one means a hang.
+        client.request("graph", {});
+        QTRY_COMPARE_WITH_TIMEOUT(fatal.size(), 1, 3000);
+        QCOMPARE(success.size(), 1);
+    }
     void protocolMismatchIsFatal() {
         EngineClient client;
         QSignalSpy fatal(&client, &EngineClient::fatalError);
