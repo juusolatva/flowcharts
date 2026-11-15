@@ -54,13 +54,18 @@ private slots:
     void queuedGraphRequestsAreCoalesced() {
         EngineClient client;
         QSignalSpy success(&client, &EngineClient::succeeded);
-        // Before the process starts, only the newest pending graph should remain.
         client.start(QCoreApplication::applicationDirPath() + "/fake-engine", {});
+        // Whether "open" is already in flight depends on how quickly the platform reports the
+        // process as started; either way the graphs queue behind it and only the newest remains.
+        auto opening = client.request("open", {});
         client.request("graph", {{"marker", 1}});
         client.request("graph", {{"marker", 2}});
         auto last = client.request("graph", {{"marker", 3}});
-        QTRY_COMPARE(success.size(), 1);
-        QCOMPARE(success[0][0].toLongLong(), last);
+        QTRY_COMPARE(success.size(), 2);
+        QCOMPARE(success[0][0].toLongLong(), opening);
+        QCOMPARE(success[1][0].toLongLong(), last);
+        QTest::qWait(100);
+        QCOMPARE(success.size(), 2);
     }
 };
 QTEST_GUILESS_MAIN(EngineClientTest)

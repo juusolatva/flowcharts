@@ -4,6 +4,7 @@
 #include "sourceview.h"
 
 #include <QAction>
+#include <QDir>
 #include <QFile>
 #include <QGraphicsItem>
 #include <QGraphicsScene>
@@ -66,7 +67,7 @@ private slots:
             QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "previous#start"), 10000);
         }
         auto file = tree->model()->index(2, 0);
-        QCOMPARE(file.data(Qt::ToolTipRole).toString(), path);
+        QCOMPARE(QDir::fromNativeSeparators(file.data(Qt::ToolTipRole).toString()), path);
         auto selected = skipped ? tree->model()->index(1, 0, file) : file;
         QVERIFY(selected.isValid());
         const auto selectedLabel = selected.data().toString();
