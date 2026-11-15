@@ -2,7 +2,7 @@
 
 #include <QFileInfo>
 #include <QLineEdit>
-#include <QSignalBlocker>
+#include <QScopedValueRollback>
 #include <QSortFilterProxyModel>
 #include <QStandardItemModel>
 #include <QStyle>
@@ -45,7 +45,7 @@ ChartBrowser::ChartBrowser(QWidget *parent)
     m_tree->setAccessibleName("Files and charts");
     connect(m_search, &QLineEdit::textChanged, this, [this](const QString &text) {
         const QPersistentModelIndex current(m_tree->currentIndex());
-        const QSignalBlocker blocker(m_tree->selectionModel());
+        const QScopedValueRollback syncing(m_syncing, true);
         m_filter->setFilterFixedString(text);
         // Filtering can choose a neighbouring row; that is not user navigation.
         if (!current.isValid())
@@ -54,7 +54,7 @@ ChartBrowser::ChartBrowser(QWidget *parent)
     });
     connect(m_tree->selectionModel(), &QItemSelectionModel::currentChanged, this,
             [this](const QModelIndex &index) {
-                if (!index.isValid())
+                if (m_syncing || !index.isValid())
                     return;
                 if (index.data(QualnameRole).isValid())
                     emit chartSelected(index.data(DocumentRole).toInt(),
@@ -65,8 +65,15 @@ ChartBrowser::ChartBrowser(QWidget *parent)
             });
 }
 
+void ChartBrowser::setCurrent(const QModelIndex &index) {
+    const QScopedValueRollback syncing(m_syncing, true);
+    m_tree->setCurrentIndex(index);
+    if (index.isValid())
+        m_tree->scrollTo(index);
+}
+
 void ChartBrowser::setWorkspace(const Workspace &workspace) {
-    const QSignalBlocker blocker(m_tree->selectionModel());
+    const QScopedValueRollback syncing(m_syncing, true);
     m_model->clear();
     auto *calls = chartItem("Call graph", -1, "", "call graph");
     calls->setIcon(style()->standardIcon(QStyle::SP_ComputerIcon));
@@ -90,8 +97,8 @@ void ChartBrowser::setWorkspace(const Workspace &workspace) {
             const auto name = function.toObject()["qualname"].toString();
             file->appendRow(chartItem(name, document, name, key));
         }
-        for (const auto &value : entry["skipped"].toArray()) {
-            const auto skipped = value.toObject();
+        for (const auto &skippedValue : entry["skipped"].toArray()) {
+            const auto skipped = skippedValue.toObject();
             auto *item = new QStandardItem(skipped["qualname"].toString() + " (skipped)");
             item->setEditable(false);
             item->setIcon(style()->standardIcon(QStyle::SP_MessageBoxWarning));
@@ -105,19 +112,17 @@ void ChartBrowser::setWorkspace(const Workspace &workspace) {
 }
 
 void ChartBrowser::selectChart(const ChartRef &ref) {
-    const QSignalBlocker blocker(m_tree->selectionModel());
-    const auto visit = [this, &ref](QStandardItem *item) {
+    const auto visit = [this, &ref](const QStandardItem *item) {
         if (item->data(QualnameRole).isValid() &&
             item->data(DocumentRole).toInt() == ref.document &&
             item->data(QualnameRole).toString() == ref.qualname) {
-            const auto index = m_filter->mapFromSource(item->index());
-            m_tree->setCurrentIndex(index);
+            setCurrent(m_filter->mapFromSource(item->index()));
             return true;
         }
         return false;
     };
     for (int row = 0; row < m_model->rowCount(); ++row) {
-        auto *item = m_model->item(row);
+        const auto *item = m_model->item(row);
         if (visit(item))
             return;
         for (int child = 0; child < item->rowCount(); ++child) {
@@ -125,27 +130,27 @@ void ChartBrowser::selectChart(const ChartRef &ref) {
                 return;
         }
     }
+    const QScopedValueRollback syncing(m_syncing, true);
     m_tree->clearSelection();
 }
 
 void ChartBrowser::selectFile(const FileRef &ref) {
-    const QSignalBlocker blocker(m_tree->selectionModel());
     for (int row = 0; row < m_model->rowCount(); ++row) {
-        auto *file = m_model->item(row);
+        const auto *file = m_model->item(row);
         if (file->data(SourceRole).toString() != ref.source)
             continue;
-        auto *selected = file;
+        const auto *selected = file;
         for (int child = 0; child < file->rowCount(); ++child) {
-            auto *item = file->child(child);
+            const auto *item = file->child(child);
             if (!ref.qualname.isEmpty() && item->data(SkippedRole).toString() == ref.qualname) {
                 selected = item;
                 break;
             }
         }
-        m_tree->setCurrentIndex(m_filter->mapFromSource(selected->index()));
+        setCurrent(m_filter->mapFromSource(selected->index()));
         return;
     }
-    m_tree->setCurrentIndex({});
+    setCurrent({});
 }
 
 void ChartBrowser::focusSearch() {

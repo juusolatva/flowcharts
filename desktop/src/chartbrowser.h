@@ -5,6 +5,7 @@
 #include <QWidget>
 
 class QLineEdit;
+class QModelIndex;
 class QTreeView;
 class QStandardItemModel;
 class QSortFilterProxyModel;
@@ -24,10 +25,14 @@ signals:
     void fileSelected(const QString &source, const QString &qualname);
 
 private:
+    // Programmatic selection updates the view (repaint, scroll) without emitting navigation.
+    void setCurrent(const QModelIndex &index);
+
     QLineEdit *m_search;
     QTreeView *m_tree;
     QStandardItemModel *m_model;
     QSortFilterProxyModel *m_filter;
+    bool m_syncing = false;
 };
 
 } // namespace flowcharts

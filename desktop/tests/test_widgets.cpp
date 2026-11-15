@@ -64,6 +64,41 @@ private slots:
         QVERIFY(files.isEmpty());
         QCOMPARE(tree->currentIndex().data().toString(), QString("g"));
     }
+    void programmaticSelectionScrollsTreeWithoutNavigating() {
+        QJsonArray functions;
+        for (int i = 0; i < 200; ++i)
+            functions.append(QJsonObject{{"qualname", QString("f%1").arg(i)}});
+        Workspace workspace;
+        QString error;
+        QVERIFY(workspace.setSnapshot(
+            {{"generation", 1},
+             {"entries",
+              QJsonArray{QJsonObject{
+                  {"source", "/a.py"}, {"key", "a"}, {"doc", 0}, {"functions", functions}}}},
+             {"documents",
+              QJsonArray{QJsonObject{{"source_text", ""},
+                                     {"document", QJsonObject{{"schema_version", 3},
+                                                              {"source", "/a.py"},
+                                                              {"functions", functions}}}}}}},
+            error));
+        ChartBrowser browser;
+        browser.resize(250, 200);
+        browser.setWorkspace(workspace);
+        browser.show();
+        auto *tree = browser.findChild<QTreeView *>();
+        QSignalSpy charts(&browser, &ChartBrowser::chartSelected);
+        QSignalSpy files(&browser, &ChartBrowser::fileSelected);
+        QSignalSpy current(tree->selectionModel(), &QItemSelectionModel::currentChanged);
+        browser.selectChart({0, "f199"});
+        QCOMPARE(tree->currentIndex().data().toString(), QString("f199"));
+        QVERIFY(current.size() >= 1);
+        QVERIFY(tree->viewport()->rect().intersects(tree->visualRect(tree->currentIndex())));
+        browser.selectFile({"/a.py", {}});
+        QCOMPARE(tree->currentIndex().data().toString(), QString("a.py"));
+        QVERIFY(tree->viewport()->rect().intersects(tree->visualRect(tree->currentIndex())));
+        QVERIFY(charts.isEmpty());
+        QVERIFY(files.isEmpty());
+    }
     void retainsZoomAndSelectionOnlyForSameChart() {
         GraphView view;
         view.resize(600, 400);
