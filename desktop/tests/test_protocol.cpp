@@ -49,10 +49,9 @@ private slots:
         FrameReader reader;
         QVector<QJsonObject> frames;
         QString error;
-        QVERIFY2(reader.feed(R"({"source":"bad-\udcff.py"})"
-                             "\n",
-                             frames, error),
-                 qPrintable(error));
+        // Built from pieces: MSVC rejects a backslash-u-DCFF sequence even in raw strings.
+        const QByteArray frame = QByteArray("{\"source\":\"bad-") + '\\' + "udcff.py\"}\n";
+        QVERIFY2(reader.feed(frame, frames, error), qPrintable(error));
         QCOMPARE(frames.size(), 1);
         QVERIFY(frames[0]["source"].toString().startsWith("bad-"));
         QVERIFY(frames[0]["source"].toString().endsWith(".py"));
