@@ -155,21 +155,24 @@ void MainWindow::showFile(FileRef ref) {
 void MainWindow::selectNode(const QString &id) {
     if (!m_hasChart)
         return;
-    const auto node = m_workspace.node(m_current, id);
-    const auto location = node["location"].toObject();
+    const auto location = m_workspace.node(m_current, id)["location"].toObject();
     m_source->highlightLines(location["line"].toInt(), location["end_line"].toInt());
+    if (id.isEmpty()) {
+        m_selection->clear();
+        return;
+    }
     QStringList calls;
     for (const auto &value : m_workspace.chart(m_current)["calls"].toArray()) {
         const auto call = value.toObject();
         if (call["node"].toString() == id)
             calls.append(call["text"].toString());
     }
-    const bool navigable = m_workspace.target(m_current, id).has_value();
-    m_selection->setText(id.isEmpty()
-                             ? QString{}
-                             : node["label"].toString().section('\n', 0, 0) +
-                                   (calls.isEmpty() ? "" : " · Calls: " + calls.join(", ")) +
-                                   (navigable ? " · Double-click to open" : ""));
+    QString text = m_workspace.nodeTitle(m_current, id);
+    if (!calls.isEmpty())
+        text += " · Calls: " + calls.join(", ");
+    if (m_workspace.target(m_current, id))
+        text += " · Double-click to open";
+    m_selection->setText(text);
 }
 
 void MainWindow::navigate(int delta) {

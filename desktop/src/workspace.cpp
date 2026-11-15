@@ -86,6 +86,18 @@ QJsonObject Workspace::node(const ChartRef &ref, const QString &id) const {
     return {};
 }
 
+QString Workspace::nodeTitle(const ChartRef &ref, const QString &id) const {
+    if (ref.document >= 0)
+        return node(ref, id)["label"].toString().section('\n', 0, 0);
+    const auto function = target(ref, id);
+    if (!function)
+        return {};
+    const auto module = document(function->document)["document"].toObject()["module_name"];
+    if (function->qualname == "<module>")
+        return module.toString() + " (module)";
+    return module.toString() + '.' + function->qualname;
+}
+
 QString Workspace::nodeForLine(const ChartRef &ref, int line) const {
     QString best;
     int bestSpan = std::numeric_limits<int>::max();

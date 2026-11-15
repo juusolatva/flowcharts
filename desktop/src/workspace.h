@@ -40,6 +40,8 @@ public:
     QString key(const ChartRef &ref) const;
     QJsonObject chart(const ChartRef &ref) const;
     QJsonObject node(const ChartRef &ref, const QString &id) const;
+    // One line naming a node: a flowchart node's label, or a call-graph node's function.
+    QString nodeTitle(const ChartRef &ref, const QString &id) const;
     QString nodeForLine(const ChartRef &ref, int line) const;
     std::optional<ChartRef> findChart(const QString &source, const QString &qualname) const;
     std::optional<ChartRef> target(const ChartRef &ref, const QString &node) const;

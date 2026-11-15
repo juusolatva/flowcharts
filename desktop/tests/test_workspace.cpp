@@ -41,6 +41,33 @@ private slots:
         QVERIFY(model.findChart("/a.py", "f") == ChartRef(0, "f"));
         QVERIFY(model.chart({-1, {}}).isEmpty());
     }
+    void nodeTitlesNameCallGraphFunctions() {
+        auto snapshot = fixture();
+        auto documents = snapshot["documents"].toArray();
+        auto entry = documents[0].toObject();
+        auto doc = entry["document"].toObject();
+        auto functions = doc["functions"].toArray();
+        auto chart = functions[0].toObject();
+        auto nodes = chart["nodes"].toArray();
+        auto outer = nodes[1].toObject();
+        outer["label"] = "if x:\nmore";
+        nodes[1] = outer;
+        chart["nodes"] = nodes;
+        functions[0] = chart;
+        doc["functions"] = functions;
+        doc["module"] = QJsonObject{{"qualname", "<module>"}};
+        entry["document"] = doc;
+        documents[0] = entry;
+        snapshot["documents"] = documents;
+        Workspace model;
+        QString error;
+        QVERIFY(model.setSnapshot(snapshot, error));
+        QCOMPARE(model.nodeTitle({0, "f"}, "outer"), QString("if x:"));
+        QCOMPARE(model.nodeTitle({}, "0#g"), QString("a.g"));
+        QCOMPARE(model.nodeTitle({}, "0#<module>"), QString("a (module)"));
+        QVERIFY(model.nodeTitle({}, "7#g").isEmpty());
+        QVERIFY(model.nodeTitle({0, "f"}, "missing").isEmpty());
+    }
     void fileViewsUseStablePathsAndCurrentDiagnostics() {
         auto snapshot = fixture();
         snapshot["entries"] = QJsonArray{QJsonObject{
