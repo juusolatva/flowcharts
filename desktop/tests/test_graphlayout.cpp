@@ -27,6 +27,10 @@ private slots:
         QCOMPARE(graph.edges[0].primitives[0].pen.style(), Qt::DashLine);
         QVERIFY(graph.edges[0].primitives[0].path.elementCount() >= 4);
         QCOMPARE(graph.nodes[0].drawing.primitives[1].position, QPointF(40, -146));
+        const auto &arrowhead = graph.edges[0].primitives[1];
+        QCOMPARE(arrowhead.brush.style(), Qt::SolidPattern);
+        QCOMPARE(arrowhead.brush.color(), QColor(Qt::black));
+        QCOMPARE(graph.nodes[0].drawing.primitives[0].brush.style(), Qt::NoBrush);
     }
     void invalidBoundsAndUnsupportedDrawingFailExplicitly() {
         GraphLayout graph;
