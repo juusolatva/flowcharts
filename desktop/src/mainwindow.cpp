@@ -40,6 +40,7 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
     m_diagnosticsDock->hide();
     resizeDocks({browserDock, m_sourceDock}, {270, 450}, Qt::Horizontal);
     statusBar()->addWidget(m_selection, 1);
+    m_status->setObjectName("engineStatus");
     statusBar()->addPermanentWidget(m_status);
     buildActions();
     menuBar()->findChild<QMenu *>("viewMenu")->addAction(browserDock->toggleViewAction());
@@ -60,7 +61,8 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
     connect(&m_engine, &EngineClient::failed, this,
             [this](qint64 id, const QString &method, const QString &, const QString &message) {
                 if ((method == "graph" && id != m_graphRequest) ||
-                    (method == "open" && id != m_openRequest))
+                    (method == "open" && id != m_openRequest) ||
+                    (method == "refresh" && id != m_refreshRequest))
                     return;
                 if (method == "graph")
                     m_graph->clearGraph(message);
@@ -70,9 +72,24 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
         m_status->setText("Engine disconnected");
         reportError(message);
     });
-    connect(&m_engine, &EngineClient::busyChanged, this, [this](bool busy) {
+    // The background refresh poll runs every second and usually answers at once; only work
+    // that takes noticeable time shows "Working…", so the status does not flicker.
+    auto *busyDelay = new QTimer(this);
+    busyDelay->setSingleShot(true);
+    busyDelay->setInterval(500);
+    connect(busyDelay, &QTimer::timeout, this, [this] {
         if (m_engine.running())
-            m_status->setText(busy ? "Working…" : "Ready");
+            m_status->setText("Working…");
+    });
+    connect(&m_engine, &EngineClient::busyChanged, this, [this, busyDelay](bool busy) {
+        if (busy) {
+            if (!busyDelay->isActive())
+                busyDelay->start();
+            return;
+        }
+        busyDelay->stop();
+        if (m_engine.running())
+            m_status->setText("Ready");
     });
     auto *poll = new QTimer(this);
     poll->setInterval(1000);

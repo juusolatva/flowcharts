@@ -69,8 +69,7 @@ void MainWindow::applySnapshot(const QJsonObject &snapshot) {
     m_browser->setWorkspace(m_workspace);
     const auto diagnostics = m_workspace.diagnostics();
     m_diagnostics->setPlainText(diagnostics.join('\n'));
-    if (!diagnostics.isEmpty())
-        m_diagnosticsDock->show();
+    m_diagnosticsDock->setVisible(!diagnostics.isEmpty());
     const int oldIndex = m_historyIndex;
     m_history.clear();
     m_historyIndex = -1;
