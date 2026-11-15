@@ -1,0 +1,90 @@
+name: Desktop
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  native:
+    name: Qt Widgets (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2022]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # v10.3.3
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2
+        with:
+          python-version: '3.13'
+
+      - name: Install engine dependencies
+        run: uv sync --locked --no-build --no-install-project
+
+      - name: Install Qt and Graphviz (Linux)
+        if: runner.os == 'Linux'
+        run: >-
+          sudo apt-get update &&
+          sudo apt-get install -y --no-install-recommends qt6-base-dev graphviz
+
+      - name: Install Qt and Graphviz (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $qt = "$env:RUNNER_TEMP/Qt"
+          uv tool run --from aqtinstall==3.3.0 aqt install-qt `
+            windows desktop 6.8.3 win64_msvc2022_64 `
+            --archives qtbase --outputdir $qt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $prefix = "$qt/6.8.3/msvc2022_64"
+          "CMAKE_PREFIX_PATH=$prefix" |
+            Out-File -FilePath $env:GITHUB_ENV -Encoding utf8 -Append
+          "$prefix/bin" |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+          choco install graphviz --no-progress -y
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          "$env:ProgramFiles/Graphviz/bin" |
+            Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Configure
+        run: cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build
+        run: cmake --build build/desktop --config Release --parallel 2
+
+      - name: Test native GUI and real worker integration
+        run: ctest --test-dir build/desktop -C Release --output-on-failure
+        env:
+          # Load the checked-out engine without building/installing the project.
+          PYTHONPATH: ${{ github.workspace }}/src
+
+      - name: Upload native test logs
+        if: always()
+        # v7.0.2
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        with:
+          name: desktop-test-logs-${{ matrix.os }}
+          path: |
+            build/desktop/Testing/Temporary/*.log
+            build/desktop/test-*.txt
+          retention-days: 7
+
+      - name: Test worker protocol
+        run: >-
+          uv run --locked --no-build --no-sync
+          pytest tests/test_desktop_worker.py -q

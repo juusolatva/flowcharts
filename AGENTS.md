@@ -21,6 +21,9 @@ uv run ruff format                       # format
 uv run pyflowcharts PATH -o OUTDIR       # run the CLI (files or directories)
 uv run pyflowcharts explore PATH         # run the explorer (needs Graphviz)
 node --test 'tests/js/*.test.mjs'        # JavaScript tests (Node 24; quote the glob)
+cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release  # Qt 6 desktop preview
+cmake --build build/desktop --parallel
+ctest --test-dir build/desktop --output-on-failure           # native GUI tests
 ```
 
 SVG/PNG output needs the system Graphviz `dot` binary (`sudo apt install graphviz`). Tests that need it are skipped when it's missing.
@@ -58,11 +61,14 @@ Between parsing and the backends, `calls.py` links the calls of every document i
   - `static/views/`: the thin DOM glue.
   - No npm, no build step.
 
+- `desktop/`: C++17 / Qt >= 6.4 Widgets desktop preview, built with CMake. Native graph items use Graphviz geometry; the GUI has no browser or HTTP dependency. Semantic navigation lives in `workspace.*`; rendering in `drawing.*`, `graphlayout.*` and `graphview.*`; application coordination in `mainwindow.*` / `mainwindow_data.cpp`.
+- `src/pyflowcharts/desktop/`: persistent Python worker adapter for the desktop GUI. It reuses `explorer.workspace` and the existing analysis pipeline without changing the engine. Its separately versioned stdin/stdout JSON-lines contract is in `docs/desktop-protocol.md`, so a C++ analysis engine can replace it later. Layout remains outside the IR. This is not yet a self-contained distribution; see `desktop/README.md`.
+
 ## Rules
 
 **Layering**
 - Backends, the linker and the CLI must not import `ast`, tree-sitter or anything from `frontends/python/`. Language-specific logic lives only in its frontend.
-- `explorer/`, `pipeline.py` and `cli_options.py` follow the same rule as the CLI: no `ast`, tree-sitter or `frontends/python/`. The explorer serves on `127.0.0.1` only and never lets a request path reach the file system.
+- `src/pyflowcharts/desktop/` (the Python worker), `explorer/`, `pipeline.py` and `cli_options.py` follow the same rule as the CLI: no `ast`, tree-sitter or `frontends/python/`. The explorer serves on `127.0.0.1` only and never lets a request path reach the file system.
 - `cfg/` must not import tree-sitter or anything from `frontends/`. It knows nothing about Python.
 - Adding a language means adding a frontend module that produces `cfg.model` statements and registering its extensions. No backend or `cfg/` changes should be needed.
 
@@ -74,15 +80,16 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 
 **Code style**
 - Python ≥ 3.12, full type hints, and `match` statements for AST dispatch.
-- Stay within the standard library plus `graphviz`, `tree-sitter` and `tree-sitter-python`. Ask before adding a runtime dependency. Pin new dependency versions released at least two weeks earlier; `tree-sitter` 0.26.0 is excluded (it corrupts node positions and segfaults). Dependabot proposes dependency and action updates weekly with the same two-week cooldown (`.github/dependabot.yml`); CI must pass before one is merged.
+- For Python, stay within the standard library plus `graphviz`, `tree-sitter` and `tree-sitter-python`. Ask before adding a runtime dependency. Pin new dependency versions released at least two weeks earlier; `tree-sitter` 0.26.0 is excluded (it corrupts node positions and segfaults). Dependabot proposes dependency and action updates weekly with the same two-week cooldown (`.github/dependabot.yml`); CI must pass before one is merged.
 - Keep modules focused. If a file grows past roughly 300 lines, propose a split.
 
 **Testing**
 - Test-driven: write the failing test first, then the implementation.
 - CFG tests assert on `flow(chart)` (a set of `(source_label, target_label, edge_label)` triples, from `tests/conftest.py`) rather than on node IDs or ordering.
 - Every new statement type, CLI flag or error path gets a test. Bug fixes start with a test that reproduces the bug.
-- Front-end logic goes in `explorer/static/lib/` as pure modules with `node --test` tests in `tests/js/`; `views/` stays thin DOM glue without logic worth testing.
+- Browser front-end logic goes in `explorer/static/lib/` as pure modules with `node --test` tests in `tests/js/`; `views/` stays thin DOM glue without logic worth testing.
 - `uv run pytest`, `uv run ruff check`, `uv run ruff format --check` and `node --test 'tests/js/*.test.mjs'` must all pass before committing.
+- Native GUI changes also require a CMake build and CTest run (Qt Test, headless `offscreen` plugin). Keep semantic/view-state logic independently testable; Python worker protocol tests live in `tests/test_desktop_worker.py`. Format C++ with `desktop/.clang-format`. Do not rewrite the analysis engine while implementing the desktop UI.
 
 **Git**
 - Never commit directly to `main`. Work on a feature branch (`feat/…`, `fix/…`).

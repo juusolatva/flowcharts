@@ -1,4 +1,6 @@
 .venv/
+build/
+compile_commands.json
 __pycache__/
 *.pyc
 .pytest_cache/

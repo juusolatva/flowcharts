@@ -1,0 +1,28 @@
+{
+  "bb": "0,0,200,200",
+  "_subgraph_cnt": 1,
+  "objects": [
+    {
+      "name": "cluster_0",
+      "_draw_": [{"op": "p", "points": [[0, 0], [200, 0], [200, 200], [0, 200]]}]
+    },
+    {
+      "name": "f#start",
+      "_draw_": [
+        {"op": "c", "color": "#11223344"},
+        {"op": "e", "rect": [50, 150, 30, 20]}
+      ],
+      "_ldraw_": [
+        {"op": "F", "size": 14, "face": "Helvetica"},
+        {"op": "T", "pt": [50, 146], "align": "c", "width": 20, "text": "hello"}
+      ]
+    }
+  ],
+  "edges": [{
+    "_draw_": [
+      {"op": "S", "style": "dashed"},
+      {"op": "b", "points": [[50, 130], [50, 120], [50, 100], [50, 90]]}
+    ],
+    "_hdraw_": [{"op": "P", "points": [[45, 95], [50, 85], [55, 95]]}]
+  }]
+}

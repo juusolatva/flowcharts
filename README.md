@@ -96,6 +96,24 @@ A parameter named like a function hides it, as in Python. Not resolved: shadowin
 | 1 | A function was skipped because of a syntax error (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
+## Native desktop GUI (preview)
+
+A C++ / Qt Widgets explorer is being developed alongside the browser app. The first working
+slice opens files/directories, shows native interactive flowcharts and a call graph, links node
+selection to source lines, and updates after saves. The Python analysis engine is unchanged;
+it runs in a separate worker behind a versioned interface, ready for a future C++ replacement.
+
+```bash
+cmake -S desktop -B build/desktop -DCMAKE_BUILD_TYPE=Release
+cmake --build build/desktop --parallel
+./build/desktop/flowcharts-desktop src/
+```
+
+Requires Qt 6 development files, a C++17 compiler, CMake, and the existing `uv`/Graphviz setup.
+This is a **development preview, not yet a self-contained installer**. See
+[`desktop/README.md`](desktop/README.md) for Linux/Windows builds, controls, tests and remaining
+work, and [`docs/desktop-protocol.md`](docs/desktop-protocol.md) for the replaceable engine interface.
+
 ## Exploring
 
 ```bash
