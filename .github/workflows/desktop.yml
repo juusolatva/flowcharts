@@ -79,7 +79,9 @@ jobs:
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
         with:
           name: desktop-test-logs-${{ matrix.os }}
-          path: build/desktop/Testing/Temporary/*.log
+          path: |
+            build/desktop/Testing/Temporary/*.log
+            build/desktop/test-*.txt
           retention-days: 7
 
       - name: Test worker protocol

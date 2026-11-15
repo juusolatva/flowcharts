@@ -100,6 +100,24 @@ For clangd, the repository's `.clangd` points to `build/desktop`. Configure with
 clang-format --dry-run --Werror desktop/src/*.cpp desktop/src/*.h desktop/tests/*.cpp
 ```
 
+### Native coverage (GCC/Linux)
+
+CI runs the same native suites with GCC instrumentation and imports both line and branch
+coverage into SonarQube, alongside Python and JavaScript coverage. To reproduce locally:
+
+```sh
+uv sync --locked --group native-coverage
+cmake -S desktop -B build/coverage -DCMAKE_BUILD_TYPE=Debug -DFLOWCHARTS_COVERAGE=ON
+cmake --build build/coverage --parallel
+ctest --test-dir build/coverage --output-on-failure
+uv run --no-sync gcovr --root . --filter 'desktop/src/' \
+  --exclude-unreachable-branches --exclude-throw-branches \
+  --sonarqube build/native-coverage.xml --txt build/native-coverage.txt build/coverage
+```
+
+Test code is classified separately from production code in SonarQube; native application code
+is not excluded from coverage. Windows test reports are also saved as CTest text artifacts.
+
 ## Deliberately not finished yet
 
 This is a development build, **not yet a self-contained installer**. It currently needs `uv`,
