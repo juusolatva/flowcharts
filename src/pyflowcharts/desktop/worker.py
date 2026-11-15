@@ -5,6 +5,8 @@ from __future__ import annotations
 import dataclasses
 import json
 import re
+import sys
+import traceback
 from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
@@ -78,6 +80,7 @@ class Session:
         except LayoutError as error:
             return _error(request_id, "layout_error", str(error))
         except Exception as error:  # noqa: BLE001 - one failed request must not end the session
+            traceback.print_exc(file=sys.stderr)  # stdout carries only protocol frames
             return _error(request_id, "internal_error", f"{type(error).__name__}: {error}")
         return {
             "protocol_version": PROTOCOL_VERSION,

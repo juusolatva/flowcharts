@@ -98,3 +98,23 @@ def test_unexpected_engine_error_is_reported_and_session_continues(tmp_path: Pat
     assert failed["error"]["code"] == "internal_error"
     assert "directory vanished" in failed["error"]["message"]
     assert session.request(graph)["ok"]
+
+
+def test_unexpected_engine_error_logs_traceback_to_stderr(tmp_path: Path, capsys) -> None:
+    from pyflowcharts.desktop.worker import Session
+
+    (tmp_path / "a.py").write_text("def f():\n    pass\n", encoding="utf-8")
+
+    def layout(dot: str) -> dict:
+        raise OSError("directory vanished")
+
+    session = Session(layout=layout)
+    opening = {"protocol_version": 1, "id": 1, "method": "open"}
+    assert session.request(opening | {"params": {"paths": [str(tmp_path)]}})["ok"]
+    graph = {"generation": 1, "document": 0, "qualname": "f"}
+    session.request({"protocol_version": 1, "id": 2, "method": "graph", "params": graph})
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "Traceback" in captured.err
+    assert "layout" in captured.err
+    assert "OSError: directory vanished" in captured.err
