@@ -41,10 +41,17 @@ for the old one. In-flight work can complete, but stale UI requests are ignored 
 engine errors do not close the session; malformed responses, process failure and the 120-second
 client watchdog disconnect it and show a diagnostic.
 
-The worker accepts requests up to 1 MiB; the client accepts response frames up to 64 MiB. These
+The worker accepts requests of up to 1 MiB, not counting the newline; the client accepts response frames up to 64 MiB. These
 are per-frame limits, not per-read limits. Neither endpoint assumes a pipe read equals a frame.
 Invalid UTF-8, malformed JSON and oversized request frames receive `invalid_request` with a null
-ID; the worker discards only that frame and continues processing subsequent requests.
+ID; the worker discards only that frame and continues processing subsequent requests. That
+includes JSON nested too deeply for the decoder. An unexpected failure while handling a request
+(for example an `OSError` while re-scanning a directory) receives `internal_error` with the
+request's ID, and the session stays open.
+
+Responses are UTF-8. A file name whose bytes are not valid in the file-system encoding reaches
+the worker as lone surrogates (Python's `surrogateescape`); those are written as JSON `\uDCxx`
+escapes, so the frame stays valid UTF-8.
 
 ## Methods
 
@@ -101,7 +108,8 @@ Layout is cached per chart until the workspace changes. The worker invokes `dot`
 shell and with a 30-second timeout. `layout_error` reports missing Graphviz, failed layout,
 timeout or invalid output; failed layouts are not cached.
 
-Other errors: `no_workspace`, `unknown_method`, `not_found`, `stale_generation`.
+Other errors: `no_workspace`, `unknown_method`, `not_found`, `stale_generation`,
+`internal_error`.
 
 ## Snapshot
 

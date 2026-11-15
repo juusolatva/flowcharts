@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import dataclasses
 import json
-from collections.abc import Callable
+import re
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
 
@@ -16,6 +17,9 @@ from pyflowcharts.ir import ChartOptions
 
 PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1024 * 1024
+_NEWLINES = ("\n", b"\n")
+# Python keeps undecodable POSIX file-name bytes as lone surrogates, which UTF-8 cannot encode.
+_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
 
 class ProtocolError(Exception):
@@ -73,6 +77,8 @@ class Session:
             return _error(request_id, error.code, str(error))
         except LayoutError as error:
             return _error(request_id, "layout_error", str(error))
+        except Exception as error:  # noqa: BLE001 - one failed request must not end the session
+            return _error(request_id, "internal_error", f"{type(error).__name__}: {error}")
         return {
             "protocol_version": PROTOCOL_VERSION,
             "id": request_id,
@@ -154,24 +160,39 @@ class Session:
         return {"generation": snapshot.generation, "layout": self._cache[key]}
 
 
+def _frames(input_stream: BinaryIO | TextIO) -> Iterator[bytes | str | None]:
+    """Yield each request line without its newline; None for an oversized line, drained."""
+    while line := input_stream.readline(MAX_REQUEST_BYTES + 2):
+        body = line[:-1] if line[-1:] in _NEWLINES else line
+        size = len(body) if isinstance(body, bytes) else len(body.encode("utf-8", "surrogatepass"))
+        if size <= MAX_REQUEST_BYTES:
+            yield body
+            continue
+        while line and line[-1:] not in _NEWLINES:
+            line = input_stream.readline(MAX_REQUEST_BYTES + 2)
+        yield None
+
+
+def _respond(session: Session, body: bytes | str | None) -> dict[str, Any]:
+    if body is None:
+        return _error(None, "invalid_request", "Request exceeds 1 MiB")
+    try:
+        payload = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
+    except (ValueError, RecursionError):
+        return _error(None, "invalid_request", "Expected one UTF-8 JSON object per line")
+    return session.request(payload)
+
+
+def _encode(response: dict[str, Any]) -> str:
+    text = json.dumps(response, ensure_ascii=False, separators=(",", ":"))
+    return _LONE_SURROGATE.sub(lambda match: f"\\u{ord(match[0]):04x}", text)
+
+
 def serve(
     input_stream: BinaryIO | TextIO, output_stream: TextIO, session: Session | None = None
 ) -> None:
     """One response per line, including malformed requests. EOF shuts down the worker."""
     session = session or Session()
-    while line := input_stream.readline(MAX_REQUEST_BYTES + 1):
-        if len(line if isinstance(line, bytes) else line.encode("utf-8")) > MAX_REQUEST_BYTES:
-            while line and line[-1:] not in ("\n", b"\n"):
-                line = input_stream.readline(MAX_REQUEST_BYTES + 1)
-            response = _error(None, "invalid_request", "Request exceeds 1 MiB")
-        else:
-            try:
-                payload = json.loads(line.decode("utf-8") if isinstance(line, bytes) else line)
-            except ValueError:
-                response = _error(
-                    None, "invalid_request", "Expected one UTF-8 JSON object per line"
-                )
-            else:
-                response = session.request(payload)
-        output_stream.write(json.dumps(response, ensure_ascii=False, separators=(",", ":")) + "\n")
+    for body in _frames(input_stream):
+        output_stream.write(_encode(_respond(session, body)) + "\n")
         output_stream.flush()

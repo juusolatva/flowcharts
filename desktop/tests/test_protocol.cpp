@@ -43,6 +43,20 @@ private slots:
         reader.clear();
         QVERIFY(reader.feed("{}\n", frames, error));
     }
+    void acceptsEscapedLoneSurrogatesFromUndecodableFileNames() {
+        // Python's surrogateescape keeps undecodable POSIX file-name bytes as lone surrogates;
+        // the worker escapes them because raw lone surrogates are not valid UTF-8.
+        FrameReader reader;
+        QVector<QJsonObject> frames;
+        QString error;
+        QVERIFY2(reader.feed(R"({"source":"bad-\udcff.py"})"
+                             "\n",
+                             frames, error),
+                 qPrintable(error));
+        QCOMPARE(frames.size(), 1);
+        QVERIFY(frames[0]["source"].toString().startsWith("bad-"));
+        QVERIFY(frames[0]["source"].toString().endsWith(".py"));
+    }
 };
 QTEST_GUILESS_MAIN(ProtocolTest)
 #include "test_protocol.moc"
