@@ -272,6 +272,11 @@ def test_real_layout_includes_native_drawing_geometry(tmp_path):
     assert {n["name"] for n in layout["objects"]} >= {"f#start", "f#end"}
     assert layout["objects"][0]["_draw_"]
     assert layout["edges"][0]["_draw_"]
+    # Graphviz JSON writes an unfilled spline as "b" and a filled one as "B" (like e/E, p/P),
+    # unlike the xdot text format; the GUI's drawing parser relies on that.
+    for edge in layout["edges"]:
+        assert "b" in {op["op"] for op in edge["_draw_"]}
+        assert "B" not in {op["op"] for op in edge["_draw_"]}
 
 
 @pytest.mark.parametrize("failure", ["missing", "timeout", "exit", "invalid_json"])
