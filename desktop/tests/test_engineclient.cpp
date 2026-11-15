@@ -25,6 +25,21 @@ private slots:
         QVERIFY(fatal.isEmpty());
         QVERIFY(client.idle());
     }
+    void unreadableFrameFailsOnlyTheActiveRequest() {
+        EngineClient client;
+        QSignalSpy success(&client, &EngineClient::succeeded);
+        QSignalSpy failure(&client, &EngineClient::failed);
+        QSignalSpy fatal(&client, &EngineClient::fatalError);
+        client.start(QCoreApplication::applicationDirPath() + "/fake-engine", {});
+        const auto rejected = client.request("reject", {});
+        QTRY_COMPARE(failure.size(), 1);
+        QCOMPARE(failure[0][0].toLongLong(), rejected);
+        QCOMPARE(failure[0][2].toString(), QString("example"));
+        const auto next = client.request("graph", {});
+        QTRY_COMPARE(success.size(), 1);
+        QCOMPARE(success[0][0].toLongLong(), next);
+        QVERIFY(fatal.isEmpty());
+    }
     void protocolMismatchIsFatal() {
         EngineClient client;
         QSignalSpy fatal(&client, &EngineClient::fatalError);

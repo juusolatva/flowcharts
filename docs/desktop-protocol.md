@@ -53,6 +53,9 @@ Responses are UTF-8. A file name whose bytes are not valid in the file-system en
 the worker as lone surrogates (Python's `surrogateescape`); those are written as JSON `\uDCxx`
 escapes, so the frame stays valid UTF-8.
 
+Because the GUI has at most one request in flight, it treats a null-ID error as the failure of
+that request (for example an `open` with more paths than fit in 1 MiB) and keeps the session.
+
 ## Methods
 
 ### `open`

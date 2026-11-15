@@ -12,9 +12,10 @@ int main(int argc, char **argv) {
     while (std::getline(std::cin, line)) {
         const auto request = QJsonDocument::fromJson(QByteArray::fromStdString(line)).object();
         const auto method = request["method"].toString();
-        const bool fail = method == "fail";
+        const bool reject = method == "reject"; // as the worker answers an unreadable frame
+        const bool fail = method == "fail" || reject;
         QJsonObject response{{"protocol_version", method == "bad-version" ? 99 : 1},
-                             {"id", request["id"]},
+                             {"id", reject ? QJsonValue::Null : request["id"]},
                              {"ok", !fail}};
         if (fail)
             response["error"] = QJsonObject{{"code", "example"}, {"message", "recoverable"}};

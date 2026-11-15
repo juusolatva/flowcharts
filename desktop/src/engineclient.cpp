@@ -123,7 +123,11 @@ void EngineClient::accept(const QJsonObject &response) {
         fail("Incompatible engine protocol; this GUI requires protocol version 1");
         return;
     }
-    if (!m_active || response["id"] != QJsonValue(m_active->id) || !response["ok"].isBool()) {
+    // The worker answers a frame it could not read with a null ID. Only one request is ever in
+    // flight, so that answer belongs to it; it is an ordinary failure, not a broken session.
+    const bool unreadable = response["id"].isNull() && response["ok"] == QJsonValue(false);
+    if (!m_active || (!unreadable && response["id"] != QJsonValue(m_active->id)) ||
+        !response["ok"].isBool()) {
         fail("Unexpected response from the analysis engine");
         return;
     }
