@@ -92,10 +92,11 @@ QString Workspace::nodeTitle(const ChartRef &ref, const QString &id) const {
     const auto function = target(ref, id);
     if (!function)
         return {};
-    const auto module = document(function->document)["document"].toObject()["module_name"];
+    const QJsonObject doc = document(function->document)["document"].toObject();
+    const QString module = doc.value("module_name").toString();
     if (function->qualname == "<module>")
-        return module.toString() + " (module)";
-    return module.toString() + '.' + function->qualname;
+        return module + " (module)";
+    return module + '.' + function->qualname;
 }
 
 QString Workspace::nodeForLine(const ChartRef &ref, int line) const {
