@@ -41,7 +41,7 @@ for the old one. In-flight work can complete, but stale UI requests are ignored 
 engine errors do not close the session; malformed responses, process failure and the 120-second
 client watchdog disconnect it and show a diagnostic.
 
-The worker accepts requests of up to 1 MiB, not counting the newline; the client accepts response frames up to 64 MiB. These
+The worker accepts requests of up to 1 MiB, not counting the newline; the client accepts response frames up to 512 MiB. These
 are per-frame limits, not per-read limits. Neither endpoint assumes a pipe read equals a frame.
 Invalid UTF-8, malformed JSON and oversized request frames receive `invalid_request` with a null
 ID; the worker discards only that frame and continues processing subsequent requests. That

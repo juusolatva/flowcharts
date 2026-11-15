@@ -12,7 +12,8 @@ QByteArray encodeRequest(qint64 id, const QString &method, const QJsonObject &pa
 
 class FrameReader {
 public:
-    explicit FrameReader(qsizetype limit = 64 * 1024 * 1024) : m_limit(limit) {}
+    // A snapshot carries every document and its source, so it grows with the workspace.
+    explicit FrameReader(qsizetype limit = 512 * 1024 * 1024) : m_limit(limit) {}
     bool feed(const QByteArray &bytes, QVector<QJsonObject> &frames, QString &error);
     void clear() { m_buffer.clear(); }
 
