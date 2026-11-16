@@ -39,6 +39,22 @@ QString Workspace::sourcePath(int index) const {
     return document(index)["document"].toObject()["source"].toString();
 }
 
+namespace {
+
+// Fills in why the named function was skipped, when the file's skipped list names it.
+void setSkipped(const QJsonArray &skipped, const QString &qualname, FileView &view) {
+    for (const auto &value : skipped) {
+        const auto entry = value.toObject();
+        if (entry["qualname"].toString() == qualname) {
+            view.message = entry["message"].toString();
+            view.line = entry["line"].toInt();
+            return;
+        }
+    }
+}
+
+} // namespace
+
 std::optional<FileView> Workspace::fileView(const FileRef &ref) const {
     for (const auto &value : entries()) {
         const auto entry = value.toObject();
@@ -48,16 +64,8 @@ std::optional<FileView> Workspace::fileView(const FileRef &ref) const {
         if (entry["doc"].isDouble())
             result.document = entry["doc"].toInt();
         result.message = entry["error"].toString();
-        if (result.message.isEmpty() && !ref.qualname.isEmpty()) {
-            for (const auto &value : entry["skipped"].toArray()) {
-                const auto skipped = value.toObject();
-                if (skipped["qualname"].toString() == ref.qualname) {
-                    result.message = skipped["message"].toString();
-                    result.line = skipped["line"].toInt();
-                    break;
-                }
-            }
-        }
+        if (result.message.isEmpty() && !ref.qualname.isEmpty())
+            setSkipped(entry["skipped"].toArray(), ref.qualname, result);
         return result;
     }
     return std::nullopt;
@@ -107,7 +115,8 @@ QString Workspace::nodeForLine(const ChartRef &ref, int line) const {
         if (!n["location"].isObject())
             continue;
         const auto loc = n["location"].toObject();
-        int first = loc["line"].toInt(), last = loc["end_line"].toInt();
+        const int first = loc["line"].toInt();
+        const int last = loc["end_line"].toInt();
         if (first <= line && line <= last && last - first < bestSpan) {
             best = n["id"].toString();
             bestSpan = last - first;
@@ -131,8 +140,8 @@ std::optional<ChartRef> Workspace::target(const ChartRef &ref, const QString &id
         const int separator = id.indexOf('#');
         bool ok = false;
         const int index = id.left(separator).toInt(&ok);
-        ChartRef result{index, id.mid(separator + 1)};
-        if (separator > 0 && ok && index >= 0 && !chart(result).isEmpty())
+        if (ChartRef result{index, id.mid(separator + 1)};
+            separator > 0 && ok && index >= 0 && !chart(result).isEmpty())
             return result;
         return std::nullopt;
     }
