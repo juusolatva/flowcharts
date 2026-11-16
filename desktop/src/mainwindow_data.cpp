@@ -22,34 +22,33 @@ void MainWindow::openPaths(const QStringList &paths) {
     m_source->clear();
     m_diagnostics->clear();
     m_graph->clearGraph("Analysing source files…");
-    m_history.clear();
-    m_historyIndex = -1;
+    m_history.refs.clear();
+    m_history.index = -1;
     m_hasChart = false;
     m_file.reset();
-    m_graphRequest = -1;
-    m_refreshRequest = -1;
-    m_refreshError.clear();
+    m_requests.graph = -1;
+    m_requests.refresh = -1;
+    m_requests.refreshError.clear();
     m_back->setEnabled(false);
     m_forward->setEnabled(false);
-    m_openRequest = m_engine.request("open", {{"paths", QJsonArray::fromStringList(m_paths)}});
+    m_requests.open = m_engine.request("open", {{"paths", QJsonArray::fromStringList(m_paths)}});
 }
 
 void MainWindow::acceptResult(qint64 id, const QString &method, const QJsonObject &result) {
     if (method == "open") {
-        if (id == m_openRequest)
+        if (id == m_requests.open)
             applySnapshot(result["snapshot"].toObject());
     } else if (method == "refresh") {
-        if (id != m_refreshRequest)
+        if (id != m_requests.refresh)
             return;
-        m_refreshError.clear();
+        m_requests.refreshError.clear();
         if (result["changed"].toBool())
             applySnapshot(result["snapshot"].toObject());
-    } else if (method == "graph" && id == m_graphRequest) {
+    } else if (method == "graph" && id == m_requests.graph) {
         if (result["generation"].toInt() != m_workspace.generation())
             return;
         GraphLayout graph;
-        QString error;
-        if (!parseLayout(result["layout"].toObject(), graph, error)) {
+        if (QString error; !parseLayout(result["layout"].toObject(), graph, error)) {
             m_graph->clearGraph(error);
             reportError(error);
             return;
@@ -63,10 +62,9 @@ void MainWindow::applySnapshot(const QJsonObject &snapshot) {
     const auto previousName = m_current.qualname;
     // History refers to document indexes. Remap it through stable file/chart identities.
     QVector<QPair<QString, QString>> history;
-    for (const auto &ref : m_history)
+    for (const auto &ref : m_history.refs)
         history.append({m_workspace.sourcePath(ref.document), ref.qualname});
-    QString error;
-    if (!m_workspace.setSnapshot(snapshot, error)) {
+    if (QString error; !m_workspace.setSnapshot(snapshot, error)) {
         reportError(error);
         return;
     }
@@ -74,29 +72,29 @@ void MainWindow::applySnapshot(const QJsonObject &snapshot) {
     const auto diagnostics = m_workspace.diagnostics();
     m_diagnostics->setPlainText(diagnostics.join('\n'));
     m_diagnosticsDock->setVisible(!diagnostics.isEmpty());
-    const int oldIndex = m_historyIndex;
-    m_history.clear();
-    m_historyIndex = -1;
+    const int oldIndex = m_history.index;
+    m_history.refs.clear();
+    m_history.index = -1;
     for (int i = 0; i < history.size(); ++i) {
         const auto ref = history[i].first.isEmpty()
                              ? std::optional<ChartRef>{ChartRef{}}
                              : m_workspace.findChart(history[i].first, history[i].second);
         if (!ref)
             continue;
-        m_history.append(*ref);
+        m_history.refs.append(*ref);
         if (i <= oldIndex)
-            m_historyIndex = m_history.size() - 1;
+            m_history.index = m_history.refs.size() - 1;
     }
-    m_back->setEnabled(m_historyIndex > 0);
-    m_forward->setEnabled(m_historyIndex + 1 < m_history.size());
+    m_back->setEnabled(m_history.index > 0);
+    m_forward->setEnabled(m_history.index + 1 < m_history.refs.size());
     if (m_file) {
         showFile(*m_file);
         return;
     }
     const auto ref = previousSource.isEmpty() ? std::optional<ChartRef>{ChartRef{}}
                                               : m_workspace.findChart(previousSource, previousName);
-    const auto fallback = m_historyIndex >= 0 ? m_history[m_historyIndex] : ChartRef{};
-    showChart(ref.value_or(fallback), m_history.isEmpty());
+    const auto fallback = m_history.index >= 0 ? m_history.refs[m_history.index] : ChartRef{};
+    showChart(ref.value_or(fallback), m_history.refs.isEmpty());
     if (m_current.document < 0)
         setWindowTitle("Call graph — Flowcharts");
 }
@@ -111,20 +109,19 @@ void MainWindow::showChart(const ChartRef &ref, bool record) {
     m_file.reset();
     m_hasChart = true;
     m_browser->selectChart(ref);
-    if (record && (m_historyIndex < 0 || !(m_history[m_historyIndex] == ref))) {
-        m_history.resize(m_historyIndex + 1);
-        m_history.append(ref);
-        m_historyIndex = m_history.size() - 1;
+    if (record && (m_history.index < 0 || !(m_history.refs[m_history.index] == ref))) {
+        m_history.refs.resize(m_history.index + 1);
+        m_history.refs.append(ref);
+        m_history.index = m_history.refs.size() - 1;
     }
-    m_back->setEnabled(m_historyIndex > 0);
-    m_forward->setEnabled(m_historyIndex + 1 < m_history.size());
+    m_back->setEnabled(m_history.index > 0);
+    m_forward->setEnabled(m_history.index + 1 < m_history.refs.size());
     m_selection->clear();
     if (ref.document < 0) {
         m_source->clear();
         setWindowTitle("Call graph — Flowcharts");
     } else {
-        const auto text = m_workspace.sourceText(ref.document);
-        if (m_source->toPlainText() != text)
+        if (const auto text = m_workspace.sourceText(ref.document); m_source->toPlainText() != text)
             m_source->setPlainText(text);
         m_source->highlightLines(0, 0);
         setWindowTitle(ref.qualname + " — " + m_workspace.sourcePath(ref.document) +
@@ -137,13 +134,13 @@ void MainWindow::showChart(const ChartRef &ref, bool record) {
         {"document", ref.document < 0 ? QJsonValue::Null : QJsonValue(ref.document)}};
     if (ref.document >= 0)
         params["qualname"] = ref.qualname;
-    m_graphRequest = m_engine.request("graph", params);
+    m_requests.graph = m_engine.request("graph", params);
 }
 
 void MainWindow::showFile(FileRef ref) {
     m_file = ref;
     m_hasChart = false;
-    m_graphRequest = -1;
+    m_requests.graph = -1;
     const auto view = m_workspace.fileView(ref).value_or(
         FileView{-1, "Source file is no longer in the workspace", 0});
     m_browser->selectFile(ref);
@@ -179,11 +176,11 @@ void MainWindow::selectNode(const QString &id) {
 }
 
 void MainWindow::navigate(int delta) {
-    const int next = m_historyIndex + delta;
-    if (next < 0 || next >= m_history.size())
+    const int next = m_history.index + delta;
+    if (next < 0 || next >= m_history.refs.size())
         return;
-    m_historyIndex = next;
-    showChart(m_history[next], false);
+    m_history.index = next;
+    showChart(m_history.refs[next], false);
 }
 
 } // namespace flowcharts
