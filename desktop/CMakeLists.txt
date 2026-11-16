@@ -50,7 +50,7 @@ target_compile_definitions(flowcharts-desktop PRIVATE
 if(BUILD_TESTING)
     find_package(Qt6 6.4 REQUIRED COMPONENTS Test)
     foreach(test_name IN ITEMS
-            commandline protocol workspace graphlayout widgets engineclient mainwindow)
+            commandline protocol workspace drawing graphlayout widgets engineclient mainwindow)
         qt_add_executable(test-${test_name} tests/test_${test_name}.cpp)
         target_link_libraries(test-${test_name} PRIVATE flowcharts-ui Qt6::Test)
         set_target_properties(test-${test_name} PROPERTIES WIN32_EXECUTABLE FALSE)
