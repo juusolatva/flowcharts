@@ -33,7 +33,7 @@ def graphviz_layout(dot_source: str, *, dot: str = "dot") -> dict[str, Any]:
         )
     try:
         layout = json.loads(result.stdout)
-    except (ValueError, UnicodeError):
+    except ValueError:  # includes UnicodeDecodeError
         raise LayoutError("Graphviz returned invalid JSON layout data") from None
     if not isinstance(layout, dict):
         raise LayoutError("Graphviz returned invalid JSON layout data")

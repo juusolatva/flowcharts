@@ -7,7 +7,7 @@ import json
 import re
 import sys
 import traceback
-from collections.abc import Callable, Iterator
+from collections.abc import Callable, Iterator, Sequence
 from pathlib import Path
 from typing import Any, BinaryIO, TextIO
 
@@ -15,7 +15,7 @@ from pyflowcharts.backends.callgraph import to_callgraph_dot
 from pyflowcharts.backends.dot import to_dot
 from pyflowcharts.desktop.layout import LayoutError, graphviz_layout
 from pyflowcharts.explorer.workspace import Snapshot, Workspace, snapshot_json
-from pyflowcharts.ir import ChartOptions
+from pyflowcharts.ir import ChartOptions, Document
 
 PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1024 * 1024
@@ -148,19 +148,22 @@ class Session:
             raise ProtocolError("invalid_request", "Expected document integer and qualname string")
         key = (index, qualname if index is not None else "")
         if key not in self._cache:
-            if index is None:
-                dot_source = to_callgraph_dot(list(snapshot.documents))
-            else:
-                if not 0 <= index < len(snapshot.documents):
-                    raise ProtocolError("not_found", "Document not found")
-                doc = snapshot.documents[index]
-                charts = [*doc.functions, *([doc.module] if doc.module is not None else [])]
-                chart = next((c for c in charts if c.qualname == qualname), None)
-                if chart is None:
-                    raise ProtocolError("not_found", "Chart not found")
-                dot_source = to_dot(chart)
-            self._cache[key] = self._layout(dot_source)
+            self._cache[key] = self._layout(_dot_source(snapshot.documents, index, qualname))
         return {"generation": snapshot.generation, "layout": self._cache[key]}
+
+
+def _dot_source(documents: Sequence[Document], index: int | None, qualname: str) -> str:
+    """The DOT for one chart, or for the call graph when index is None."""
+    if index is None:
+        return to_callgraph_dot(list(documents))
+    if not 0 <= index < len(documents):
+        raise ProtocolError("not_found", "Document not found")
+    doc = documents[index]
+    charts = [*doc.functions, *([doc.module] if doc.module is not None else [])]
+    chart = next((c for c in charts if c.qualname == qualname), None)
+    if chart is None:
+        raise ProtocolError("not_found", "Chart not found")
+    return to_dot(chart)
 
 
 def _frames(input_stream: BinaryIO | TextIO) -> Iterator[bytes | str | None]:
