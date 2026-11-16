@@ -19,7 +19,7 @@ QLabel *engineStatus(const MainWindow &window) {
 }
 
 // Samples the engine status for the given time and reports whether it ever read "Working…".
-bool showedWorking(MainWindow &window, int milliseconds) {
+bool showedWorking(const MainWindow &window, int milliseconds) {
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < milliseconds) {

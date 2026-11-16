@@ -50,11 +50,13 @@ private:
         qint64 graph = -1;
         qint64 refresh = -1;
         QString refreshError; // Reported once until a refresh succeeds or another error occurs.
-    } m_requests;
+    };
+    Requests m_requests;
     struct History {
         QVector<ChartRef> refs;
         int index = -1;
-    } m_history;
+    };
+    History m_history;
     ChartBrowser *m_browser;
     GraphView *m_graph;
     SourceView *m_source;

@@ -84,7 +84,7 @@ QJsonObject respond(const QJsonObject &request, const Options &options, int &gen
 
 int main(int argc, char **argv) {
     QCoreApplication app(argc, argv);
-    const auto options = parseOptions(app.arguments());
+    const auto options = parseOptions(QCoreApplication::arguments());
     int generation = 0;
     std::string line;
     while (std::getline(std::cin, line)) {

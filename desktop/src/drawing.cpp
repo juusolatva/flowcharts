@@ -128,8 +128,7 @@ bool setLineWidth(const QString &name, QPen &pen, QString &error) {
 }
 
 bool setLineStyle(const QJsonObject &op, QPen &pen, QString &error) {
-    const auto name = op["style"].toString();
-    if (name == "dashed")
+    if (const auto name = op["style"].toString(); name == "dashed")
         pen.setStyle(Qt::DashLine);
     else if (name == "dotted")
         pen.setStyle(Qt::DotLine);
