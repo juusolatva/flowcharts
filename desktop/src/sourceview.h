@@ -9,7 +9,7 @@ class SourceView : public QPlainTextEdit {
 public:
     explicit SourceView(QWidget *parent = nullptr);
     void highlightLines(int first, int last);
-    void paintGutter(QPaintEvent *event);
+    void paintGutter(const QPaintEvent *event);
 signals:
     void lineClicked(int line);
 

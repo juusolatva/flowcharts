@@ -14,14 +14,15 @@
 #include <QTreeView>
 #include <QtTest>
 
+#include <algorithm>
+
 using namespace flowcharts;
 
-static bool hasNode(GraphView *view, const QString &prefix) {
-    for (auto *item : view->scene()->items()) {
-        if (item->data(0).toString().startsWith(prefix))
-            return true;
-    }
-    return false;
+static bool hasNode(const GraphView *view, const QString &prefix) {
+    const auto items = view->scene()->items();
+    return std::any_of(items.cbegin(), items.cend(), [&prefix](const QGraphicsItem *item) {
+        return item->data(0).toString().startsWith(prefix);
+    });
 }
 
 static void writeSource(const QString &path, const QByteArray &text) {
@@ -112,7 +113,8 @@ private slots:
         for (const auto &name : {"first", "removed", "last"})
             browser->chartSelected(0, name);
         QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "last#start"), 10000);
-        QAction *back = nullptr, *forward = nullptr;
+        QAction *back = nullptr;
+        QAction *forward = nullptr;
         for (auto *action : window.findChildren<QAction *>()) {
             if (action->text() == "Back")
                 back = action;

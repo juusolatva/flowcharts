@@ -184,8 +184,7 @@ void GraphView::wheelEvent(QWheelEvent *event) {
 }
 
 void GraphView::mouseDoubleClickEvent(QMouseEvent *event) {
-    auto *item = itemAt(event->pos());
-    if (item && !item->data(0).toString().isEmpty()) {
+    if (const auto *item = itemAt(event->pos()); item && !item->data(0).toString().isEmpty()) {
         emit nodeActivated(item->data(0).toString());
         event->accept();
         return;
