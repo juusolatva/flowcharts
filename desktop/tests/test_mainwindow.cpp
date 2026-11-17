@@ -14,12 +14,12 @@ QString fakeEngine() {
     return QCoreApplication::applicationDirPath() + "/fake-engine";
 }
 
-QLabel *engineStatus(MainWindow &window) {
+QLabel *engineStatus(const MainWindow &window) {
     return window.findChild<QLabel *>("engineStatus");
 }
 
 // Samples the engine status for the given time and reports whether it ever read "Working…".
-bool showedWorking(MainWindow &window, int milliseconds) {
+bool showedWorking(const MainWindow &window, int milliseconds) {
     QElapsedTimer timer;
     timer.start();
     while (timer.elapsed() < milliseconds) {
@@ -67,8 +67,8 @@ private slots:
     void diagnosticsDockClosesWhenProblemsAreResolved() {
         MainWindow window(fakeEngine(), {"--diagnostics-once"});
         window.show();
-        auto *dock = window.findChild<QDockWidget *>("diagnosticsDock");
-        auto *text = dock->findChild<QPlainTextEdit *>();
+        const auto *dock = window.findChild<QDockWidget *>("diagnosticsDock");
+        const auto *text = dock->findChild<QPlainTextEdit *>();
         window.openPaths({"/project"});
         QTRY_VERIFY(dock->isVisible());
         QCOMPARE(text->toPlainText(), QString("problem"));
@@ -80,7 +80,7 @@ private slots:
         MainWindow window(fakeEngine(), {"--refresh-fails"});
         window.show();
         auto *dock = window.findChild<QDockWidget *>("diagnosticsDock");
-        auto *text = dock->findChild<QPlainTextEdit *>();
+        const auto *text = dock->findChild<QPlainTextEdit *>();
         window.openPaths({"/project"});
         QTRY_VERIFY_WITH_TIMEOUT(text->toPlainText().contains("refresh failed"), 5000);
         dock->hide();
@@ -91,7 +91,7 @@ private slots:
     void failedOpenReplacesAnalysingPlaceholder() {
         MainWindow window(fakeEngine(), {"--open-fails"});
         window.show();
-        auto *graph = window.findChild<GraphView *>();
+        const auto *graph = window.findChild<GraphView *>();
         window.openPaths({"/project"});
         QTRY_VERIFY(graph->message().contains("open failed"));
     }

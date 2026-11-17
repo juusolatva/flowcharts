@@ -44,6 +44,12 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
     statusBar()->addPermanentWidget(m_status);
     buildActions();
     menuBar()->findChild<QMenu *>("viewMenu")->addAction(browserDock->toggleViewAction());
+    connectViews();
+    connectEngine();
+    m_engine.start(m_program, m_arguments);
+}
+
+void MainWindow::connectViews() {
     connect(m_browser, &ChartBrowser::chartSelected, this,
             [this](int doc, const QString &name) { showChart({doc, name}); });
     connect(m_browser, &ChartBrowser::fileSelected, this,
@@ -57,22 +63,13 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
         if (m_hasChart && m_current.document >= 0)
             m_graph->selectNode(m_workspace.nodeForLine(m_current, line));
     });
+}
+
+void MainWindow::connectEngine() {
     connect(&m_engine, &EngineClient::succeeded, this, &MainWindow::acceptResult);
     connect(&m_engine, &EngineClient::failed, this,
             [this](qint64 id, const QString &method, const QString &, const QString &message) {
-                if ((method == "graph" && id != m_graphRequest) ||
-                    (method == "open" && id != m_openRequest) ||
-                    (method == "refresh" && id != m_refreshRequest))
-                    return;
-                if (method == "refresh") {
-                    // The poll retries every second; a lasting failure is reported once.
-                    if (message == m_refreshError)
-                        return;
-                    m_refreshError = message;
-                }
-                if (method == "graph" || method == "open")
-                    m_graph->clearGraph(message);
-                reportError(message);
+                engineFailed(id, method, message);
             });
     connect(&m_engine, &EngineClient::fatalError, this, [this](const QString &message) {
         m_status->setText("Engine disconnected");
@@ -101,10 +98,25 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments, QWid
     poll->setInterval(1000);
     connect(poll, &QTimer::timeout, this, [this] {
         if (m_workspace.generation() > 0 && m_engine.idle())
-            m_refreshRequest = m_engine.request("refresh", {});
+            m_requests.refresh = m_engine.request("refresh", {});
     });
     poll->start();
-    m_engine.start(m_program, m_arguments);
+}
+
+void MainWindow::engineFailed(qint64 id, const QString &method, const QString &message) {
+    if ((method == "graph" && id != m_requests.graph) ||
+        (method == "open" && id != m_requests.open) ||
+        (method == "refresh" && id != m_requests.refresh))
+        return;
+    if (method == "refresh") {
+        // The poll retries every second; a lasting failure is reported once.
+        if (message == m_requests.refreshError)
+            return;
+        m_requests.refreshError = message;
+    }
+    if (method == "graph" || method == "open")
+        m_graph->clearGraph(message);
+    reportError(message);
 }
 
 void MainWindow::buildActions() {

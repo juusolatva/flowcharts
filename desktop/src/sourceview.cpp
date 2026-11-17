@@ -51,7 +51,7 @@ void SourceView::resizeEvent(QResizeEvent *event) {
     updateGutter();
 }
 
-void SourceView::paintGutter(QPaintEvent *event) {
+void SourceView::paintGutter(const QPaintEvent *event) {
     QPainter painter(m_gutter);
     painter.fillRect(event->rect(), palette().alternateBase());
     painter.setPen(palette().color(QPalette::PlaceholderText));

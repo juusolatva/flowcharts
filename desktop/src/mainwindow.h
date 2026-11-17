@@ -24,6 +24,9 @@ public:
 
 private:
     void buildActions();
+    void connectViews();
+    void connectEngine();
+    void engineFailed(qint64 id, const QString &method, const QString &message);
     void restartEngine();
     void acceptResult(qint64 id, const QString &method, const QJsonObject &result);
     void applySnapshot(const QJsonObject &snapshot);
@@ -41,12 +44,19 @@ private:
     ChartRef m_current;
     std::optional<FileRef> m_file;
     bool m_hasChart = false;
-    qint64 m_openRequest = -1;
-    qint64 m_graphRequest = -1;
-    qint64 m_refreshRequest = -1;
-    QString m_refreshError; // Reported once until a refresh succeeds or another error occurs.
-    QVector<ChartRef> m_history;
-    int m_historyIndex = -1;
+    // The latest request of each kind; answers to older ones are ignored.
+    struct Requests {
+        qint64 open = -1;
+        qint64 graph = -1;
+        qint64 refresh = -1;
+        QString refreshError; // Reported once until a refresh succeeds or another error occurs.
+    };
+    Requests m_requests;
+    struct History {
+        QVector<ChartRef> refs;
+        int index = -1;
+    };
+    History m_history;
     ChartBrowser *m_browser;
     GraphView *m_graph;
     SourceView *m_source;

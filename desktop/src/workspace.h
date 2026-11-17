@@ -11,8 +11,8 @@ struct ChartRef {
     QString qualname;
     ChartRef() = default;
     ChartRef(int doc, const QString &name) : document(doc), qualname(name) {}
-    bool operator==(const ChartRef &other) const {
-        return document == other.document && qualname == other.qualname;
+    friend bool operator==(const ChartRef &a, const ChartRef &b) {
+        return a.document == b.document && a.qualname == b.qualname;
     }
 };
 

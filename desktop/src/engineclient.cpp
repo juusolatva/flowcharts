@@ -108,8 +108,7 @@ void EngineClient::dispatch() {
 
 void EngineClient::readOutput() {
     QVector<QJsonObject> frames;
-    QString error;
-    if (!m_reader.feed(m_process.readAllStandardOutput(), frames, error)) {
+    if (QString error; !m_reader.feed(m_process.readAllStandardOutput(), frames, error)) {
         fail(error);
         return;
     }
@@ -127,8 +126,8 @@ void EngineClient::accept(const QJsonObject &response) {
     }
     // The worker answers a frame it could not read with a null ID. Only one request is ever in
     // flight, so that answer belongs to it; it is an ordinary failure, not a broken session.
-    const bool unreadable = response["id"].isNull() && response["ok"] == QJsonValue(false);
-    if (!m_active || (!unreadable && response["id"] != QJsonValue(m_active->id)) ||
+    if (const bool unreadable = response["id"].isNull() && response["ok"] == QJsonValue(false);
+        !m_active || (!unreadable && response["id"] != QJsonValue(m_active->id)) ||
         !response["ok"].isBool()) {
         fail("Unexpected response from the analysis engine");
         return;

@@ -85,7 +85,7 @@ private slots:
         browser.resize(250, 200);
         browser.setWorkspace(workspace);
         browser.show();
-        auto *tree = browser.findChild<QTreeView *>();
+        const auto *tree = browser.findChild<QTreeView *>();
         QSignalSpy charts(&browser, &ChartBrowser::chartSelected);
         QSignalSpy files(&browser, &ChartBrowser::fileSelected);
         QSignalSpy current(tree->selectionModel(), &QItemSelectionModel::currentChanged);
