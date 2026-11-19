@@ -3,6 +3,7 @@ import socket
 import struct
 import threading
 import time
+from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -317,9 +318,17 @@ class OneLoopStop:
         return self.is_set()
 
 
-def run_watch(workspace: Any, server: Any, stop: Any, **kwargs: Any) -> None:
-    """``watch`` with test doubles standing in for the workspace, server and stop event."""
-    watch(workspace, server, stop, **kwargs)
+def run_watch(
+    workspace: Any,
+    server: Any,
+    stop: Any,
+    *,
+    log: Callable[[str], None],
+    interval: float = 1.0,
+) -> None:
+    """``watch`` with test doubles standing in for the workspace, server and stop event; the
+    keyword arguments stay typed, so pyright still checks them against ``watch``."""
+    watch(workspace, server, stop, interval=interval, log=log)
 
 
 def test_watch_logs_and_notifies(tmp_path):
