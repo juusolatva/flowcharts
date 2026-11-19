@@ -8,8 +8,9 @@ from tree_sitter import Node
 
 from pyflowcharts.cfg.builder import build_chart
 from pyflowcharts.frontends.python.calls import Resolver
+from pyflowcharts.frontends.python.nodes import is_docstring, named
 from pyflowcharts.frontends.python.source import Source
-from pyflowcharts.frontends.python.statements import convert_statements, is_docstring, named
+from pyflowcharts.frontends.python.statements import convert_statements
 from pyflowcharts.ir import MODULE_QUALNAME, Chart, ChartOptions, SourceLocation
 
 UNSUPPORTED = "unsupported syntax in module code; module chart skipped"

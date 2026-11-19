@@ -24,17 +24,18 @@ from pyflowcharts.cfg.model import (
 )
 from pyflowcharts.frontends.python.calls import Resolver, call_roots
 from pyflowcharts.frontends.python.discovery import Found
+from pyflowcharts.frontends.python.nodes import (
+    EXTRAS,
+    calls_in_value,
+    is_docstring,
+    is_type_alias,
+    named,
+)
+from pyflowcharts.frontends.python.patterns import irrefutable
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.ir import ChartOptions, NodeKind
 
 _SKIPPED = frozenset({"pass_statement", "global_statement", "nonlocal_statement"})
-_EXTRAS = frozenset({"comment", "line_continuation"})
-
-
-def named(node: Node) -> list[Node]:
-    """Named children without the grammar's extras (comments, line continuations), which
-    can appear anywhere, including before a statement's expression."""
-    return [c for c in node.named_children if c.type not in _EXTRAS]
 
 
 def convert_body(
@@ -93,47 +94,6 @@ def always_true(cond: str) -> bool:
     except (SyntaxError, ValueError):
         return False
     return isinstance(expr, ast.Constant) and bool(expr.value)
-
-
-def is_docstring(stmt: Node) -> bool:
-    children = named(stmt)
-    if stmt.type != "expression_statement" or len(children) != 1:
-        return False
-    value = children[0]
-    while value.type == "parenthesized_expression" and len(named(value)) == 1:
-        value = named(value)[0]
-    strings = value.named_children if value.type == "concatenated_string" else [value]
-    return all(s.type == "string" and _is_plain_string(s) for s in strings)
-
-
-def _is_plain_string(string: Node) -> bool:
-    """Not an f-string or bytes (which ``ast`` does not treat as docstrings)."""
-    start = string.children[0].text or b""
-    return not any(c in b"fFbB" for c in start.rstrip(b"'\""))
-
-
-def _contains_call(node: Node | None) -> bool:
-    if node is None:
-        return False
-    if node.type == "call":
-        return True
-    return any(_contains_call(child) for child in node.children)
-
-
-def _calls_in_value(assignment: Node) -> bool:
-    """Whether the assigned value contains a call. Chained assignments (``a = b = v``) nest
-    on the right, and only the final value counts, as with ``ast``."""
-    value = assignment.child_by_field_name("right")
-    while value is not None and value.type == "assignment":
-        value = value.child_by_field_name("right")
-    return _contains_call(value)
-
-
-def _is_type_alias(node: Node) -> bool:
-    """A real ``type X = ...`` statement has a name (or ``Name[T]``) on the left."""
-    left = node.child_by_field_name("left")
-    target = left.named_children[0] if left is not None and left.named_child_count else None
-    return target is not None and target.type in ("identifier", "generic_type")
 
 
 def _field_text(node: Node, field: str, src: Source) -> str:
@@ -216,9 +176,9 @@ class _Converter:
                 return Step(signature_label(node, self.src, self.options), loc)
             case "class_definition":
                 return Step(f"class {self._text(node, 'name')}", loc)
-            case "type_alias_statement" if not _is_type_alias(node):
+            case "type_alias_statement" if not is_type_alias(node):
                 # The grammar reads `type(x).a = v` as a PEP 695 alias; it is an assignment.
-                return Step(self.src.source_text(node), loc, hidden=not _calls_in_value(node))
+                return Step(self.src.source_text(node), loc, hidden=not calls_in_value(node))
             case "break_statement":
                 return Break(loc)
             case "continue_statement":
@@ -235,7 +195,7 @@ class _Converter:
                 case "ellipsis":
                     return None
                 case "assignment" | "augmented_assignment":
-                    hidden = not _calls_in_value(inner)
+                    hidden = not calls_in_value(inner)
                     return Step(self.src.source_text(node), loc, hidden=hidden)
         return Step(self.src.source_text(node), loc)
 
@@ -277,7 +237,7 @@ class _Converter:
             if (guard := case.child_by_field_name("guard")) is not None:
                 label += f" {self.src.source_text(guard)}"
             arms.append(Arm(label, self.block(case.child_by_field_name("consequence"))))
-        default = None if cases and _irrefutable(cases[-1]) else "no match"
+        default = None if cases and irrefutable(cases[-1]) else "no match"
         subject = self._list_text(_between(node, "match", (":",)))
         return Branch(f"match {subject}", self.src.location(node), tuple(arms), default)
 
@@ -318,7 +278,7 @@ class _Converter:
         for node in nodes:
             if node.type == ",":
                 parts[-1] += ","
-            elif node.type not in _EXTRAS:
+            elif node.type not in EXTRAS:
                 parts.append(self.src.source_text(node))
         return " ".join(parts)
 
@@ -348,38 +308,3 @@ def _between(node: Node, after: str, until: tuple[str, ...]) -> list[Node]:
             break
         out.append(child)
     return out
-
-
-def _irrefutable(case: Node) -> bool:
-    """An irrefutable pattern (see ``_capture``) with no guard."""
-    if case.child_by_field_name("guard") is not None:
-        return False
-    patterns = [c for c in case.named_children if c.type == "case_pattern"]
-    if len(patterns) != 1 or any(c.type == "," for c in case.children):
-        return False  # `case y,:` is a one-element sequence pattern
-    return _capture(patterns[0])
-
-
-def _capture(pattern: Node) -> bool:
-    """Whether ``pattern`` (a ``case_pattern`` or an alternative of an or-pattern) always
-    matches: ``_``, a capture name, one in parentheses, ``P as name`` with ``P`` irrefutable,
-    or an or-pattern with an irrefutable alternative."""
-    if pattern.type == "case_pattern":
-        if pattern.child_count != 1:
-            return False
-        pattern = pattern.children[0]
-    match pattern.type:
-        case "_":
-            return True
-        case "dotted_name":
-            return pattern.named_child_count == 1
-        case "tuple_pattern":
-            inner = [c for c in pattern.named_children if c.type == "case_pattern"]
-            has_comma = any(c.type == "," for c in pattern.children)
-            return len(inner) == 1 and not has_comma and _capture(inner[0])
-        case "as_pattern":
-            inner = next((c for c in pattern.named_children if c.type == "case_pattern"), None)
-            return inner is not None and _capture(inner)
-        case "union_pattern":
-            return any(_capture(c) for c in pattern.children if c.type != "|")
-    return False
