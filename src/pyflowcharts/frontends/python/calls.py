@@ -4,13 +4,20 @@ from __future__ import annotations
 
 import unicodedata
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import PurePosixPath
 
 from tree_sitter import Node
 
 from pyflowcharts.cfg.model import CallSite
 from pyflowcharts.frontends.python.discovery import Found
+from pyflowcharts.frontends.python.imports import (
+    Class,
+    FromImport,
+    ModuleImport,
+    Scope,
+    import_candidates,
+)
 from pyflowcharts.frontends.python.source import Source, identifier
 from pyflowcharts.ir import CallRef
 
@@ -65,57 +72,6 @@ def _fields(node: Node, *names: str) -> list[Node]:
     return [c for name in names if (c := node.child_by_field_name(name)) is not None]
 
 
-@dataclass(frozen=True)
-class _Name:
-    """``from module import name``: ``name`` may be a submodule or a name in ``module``."""
-
-    module: str
-    name: str
-
-
-@dataclass(frozen=True)
-class _Module:
-    """``import x.y`` (``base`` ``x``, reachable ``x`` and ``x.y``) or ``import x.y as z``
-    (``base`` and reachable ``x.y`` only). ``certain`` when the import always runs: it sits
-    directly in a module's or function's body, not in a ``try``, ``if`` or other block."""
-
-    base: str
-    reachable: frozenset[str]
-    certain: bool = False
-
-
-type _Binding = _Name | _Module
-
-
-@dataclass
-class _Class:
-    """A class body: its qualname and its methods (name → qualname, first wins), so that
-    ``self.m`` in a redefined class names that class's ``m`` (``C.m@L{line}``)."""
-
-    qualname: str
-    methods: dict[str, str] = field(default_factory=dict)
-
-
-@dataclass
-class _Scope:
-    """A module's or function's bindings: definitions (name → kind and qualname, first
-    wins), imports (name → bindings in source order) and parameters (bound to nothing we
-    can resolve, but they stop the lookup)."""
-
-    definitions: dict[str, tuple[str, str]] = field(default_factory=dict)
-    imports: dict[str, list[_Binding]] = field(default_factory=dict)
-    parameters: frozenset[str] = frozenset()
-
-    def binds(self, name: str) -> bool:
-        return name in self.definitions or name in self.imports or name in self.parameters
-
-    def define(self, name: str, kind: str, qualname: str) -> None:
-        self.definitions.setdefault(name, (kind, qualname))
-
-    def bind(self, name: str, binding: _Binding) -> None:
-        self.imports.setdefault(name, []).append(binding)
-
-
 class Resolver:
     """Finds a file's call sites and their candidate targets."""
 
@@ -123,9 +79,9 @@ class Resolver:
         self.info = info
         self.src = src
         self._found = {f.node.id: f for f in functions}
-        self._module = _Scope()
-        self._scopes: dict[int, _Scope] = {}  # by function node id
-        self._classes: dict[int, _Class] = {}  # function node id → directly enclosing class
+        self._module = Scope()
+        self._scopes: dict[int, Scope] = {}  # by function node id
+        self._classes: dict[int, Class] = {}  # function node id → directly enclosing class
         self._index(root, "", self._module, None)
 
     def sites(self, roots: Sequence[Node], scope: Found | None) -> tuple[CallSite, ...]:
@@ -142,7 +98,7 @@ class Resolver:
 
     # -- tables ---------------------------------------------------------------
 
-    def _index(self, node: Node, prefix: str, scope: _Scope, cls: _Class | None) -> None:
+    def _index(self, node: Node, prefix: str, scope: Scope, cls: Class | None) -> None:
         for child in node.children:
             match child.type:
                 case "function_definition":
@@ -153,13 +109,13 @@ class Resolver:
                     if cls is not None:
                         self._classes[child.id] = cls
                         cls.methods.setdefault(name, qualname)
-                    inner = self._scopes[child.id] = _Scope(parameters=_parameters(child))
+                    inner = self._scopes[child.id] = Scope(parameters=_parameters(child))
                     self._index(child, qualname + ".", inner, None)
                 case "class_definition":
                     qualname = prefix + _name(child)
                     scope.define(_name(child), "class", qualname)
                     # A class body binds nothing visible to the functions inside it.
-                    self._index(child, qualname + ".", _Scope(), _Class(qualname))
+                    self._index(child, qualname + ".", Scope(), Class(qualname))
                 case "import_statement":
                     self._import(child, scope)
                 case "import_from_statement":
@@ -167,20 +123,20 @@ class Resolver:
                 case _:
                     self._index(child, prefix, scope, cls)
 
-    def _import(self, stmt: Node, scope: _Scope) -> None:
+    def _import(self, stmt: Node, scope: Scope) -> None:
         certain = _always_runs(stmt)
         for name in stmt.children_by_field_name("name"):
             if name.type == "aliased_import":
                 dotted, alias = name.child_by_field_name("name"), name.child_by_field_name("alias")
                 if dotted is not None and alias is not None:
                     target = _text(dotted)
-                    scope.bind(_text(alias), _Module(target, frozenset({target}), certain))
+                    scope.bind(_text(alias), ModuleImport(target, frozenset({target}), certain))
             elif name.type == "dotted_name":
                 parts = _text(name).split(".")
                 reachable = frozenset(".".join(parts[:i]) for i in range(1, len(parts) + 1))
-                scope.bind(parts[0], _Module(parts[0], reachable, certain))
+                scope.bind(parts[0], ModuleImport(parts[0], reachable, certain))
 
-    def _import_from(self, stmt: Node, scope: _Scope) -> None:
+    def _import_from(self, stmt: Node, scope: Scope) -> None:
         source = stmt.child_by_field_name("module_name")
         module = self._from_module(source) if source is not None else None
         if module is None:
@@ -190,7 +146,7 @@ class Resolver:
             if name.type == "aliased_import":
                 original = name.child_by_field_name("name") or name
                 bound = name.child_by_field_name("alias") or original
-            scope.bind(_text(bound), _Name(module, _text(original)))
+            scope.bind(_text(bound), FromImport(module, _text(original)))
 
     def _from_module(self, source: Node) -> str | None:
         """The absolute module of ``from SOURCE import …``, or ``None`` above the top."""
@@ -209,14 +165,14 @@ class Resolver:
 
     # -- lookup ---------------------------------------------------------------
 
-    def _chain(self, scope: Found | None) -> Iterator[_Scope]:
+    def _chain(self, scope: Found | None) -> Iterator[Scope]:
         while scope is not None:
             if (table := self._scopes.get(scope.node.id)) is not None:
                 yield table
             scope = scope.enclosing
         yield self._module
 
-    def _lookup(self, name: str, scope: Found | None) -> _Scope | None:
+    def _lookup(self, name: str, scope: Found | None) -> Scope | None:
         return next((s for s in self._chain(scope) if s.binds(name)), None)
 
     def _own(self, qualname: str) -> list[CallRef]:
@@ -240,40 +196,7 @@ class Resolver:
                 out += self._own(".".join([qualname, *rest]) if rest else f"{qualname}.__init__")
             elif not rest:
                 out += self._own(qualname)
-        return out + _import_candidates(table.imports.get(first, []), rest)
-
-
-def _import_candidates(bindings: list[_Binding], rest: list[str]) -> list[CallRef]:
-    """Candidates through the imports binding one name, in source order. Each import counts
-    on its own (it may sit in one branch of a ``try`` or ``if``), but the ``import`` bindings
-    of one package come together, the longest module first: with ``import a.b`` and
-    ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
-    packages: dict[str, list[_Module]] = {}
-    for binding in bindings:
-        if isinstance(binding, _Module):
-            packages.setdefault(binding.base, []).append(binding)
-    out: list[CallRef] = []
-    for binding in bindings:
-        match binding:
-            case _Name():
-                out += _through(binding, rest)
-            case _Module(base) if base in packages:
-                out += _package_candidates(packages.pop(base), rest)
-    return out
-
-
-def _package_candidates(modules: list[_Module], rest: list[str]) -> list[CallRef]:
-    """Candidates through the ``import`` bindings of one package, the longest module first.
-    A module reachable through an import that always runs is certainly a module, so shorter
-    fallbacks through it are dropped (none at all when the whole chain is a module)."""
-    full = modules[0].base.split(".") + rest
-    certain = {path for module in modules if module.certain for path in module.reachable}
-    known = next((k for k in range(len(full), 0, -1) if ".".join(full[:k]) in certain), 0)
-    if known == len(full):
-        return []  # the chain certainly names a module, and modules are not called
-    refs = [ref for module in modules for ref in _through(module, rest)]
-    refs = [ref for ref in refs if ref.module.count(".") + 1 >= known]
-    return sorted(refs, key=lambda ref: -ref.module.count("."))
+        return out + import_candidates(table.imports.get(first, []), rest)
 
 
 def _always_runs(stmt: Node) -> bool:
@@ -287,24 +210,6 @@ def _always_runs(stmt: Node) -> bool:
             return False
         child, node = node, node.parent
     return True
-
-
-def _through(binding: _Binding, rest: list[str]) -> list[CallRef]:
-    """Candidates for calling ``rest`` (attribute parts, possibly none) on an import."""
-    match binding:
-        case _Name(module, name) if rest:
-            tail = ".".join(rest)
-            return [CallRef(f"{module}.{name}", tail), CallRef(module, f"{name}.{tail}")]
-        case _Name(module, name):
-            return [CallRef(module, name), CallRef(module, f"{name}.__init__")]
-        case _Module(base, reachable):
-            full = base.split(".") + rest
-            if ".".join(full) in reachable:
-                return []  # the chain names a module, and modules are not called
-            for k in range(len(full) - 1, 0, -1):  # proper prefixes, longest first
-                if (prefix := ".".join(full[:k])) in reachable:
-                    return [CallRef(prefix, ".".join(full[k:]))]
-    return []
 
 
 def _parts(callee: Node) -> list[str]:

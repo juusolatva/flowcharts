@@ -11,7 +11,7 @@ from pyflowcharts.backends.callgraph import to_callgraph_dot
 from pyflowcharts.backends.dot import to_dot
 from pyflowcharts.explorer.render import RenderError, svg
 from pyflowcharts.explorer.workspace import Snapshot, snapshot_json
-from pyflowcharts.ir import MODULE_QUALNAME, Chart, Document
+from pyflowcharts.ir import MODULE_QUALNAME, Chart
 from pyflowcharts.serialize import to_json
 
 TEXT = "text/plain; charset=utf-8"
@@ -55,7 +55,9 @@ def handle(
     if query.get("g") != [str(snapshot.generation)]:
         return CONFLICT
     if kind == "callgraph":
-        return _cached(snapshot, ("callgraph",), lambda: to_callgraph_dot(_docs(snapshot)), render)
+        return _cached(
+            snapshot, ("callgraph",), lambda: to_callgraph_dot(list(snapshot.documents)), render
+        )
     i = _document_index(index, snapshot)
     if i is None:
         return NOT_FOUND
@@ -86,10 +88,6 @@ def _document_index(text: str, snapshot: Snapshot) -> int | None:
         return None
     i = int(text)
     return i if i < len(snapshot.documents) else None
-
-
-def _docs(snapshot: Snapshot) -> list[Document]:
-    return list(snapshot.documents)
 
 
 def _find_chart(snapshot: Snapshot, i: int, qualname: str) -> Chart | None:
