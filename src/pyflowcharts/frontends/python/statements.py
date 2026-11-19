@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import ast
-import warnings
 from dataclasses import replace
 
 from tree_sitter import Node
@@ -26,6 +24,7 @@ from pyflowcharts.frontends.python.calls import Resolver, call_roots
 from pyflowcharts.frontends.python.discovery import Found
 from pyflowcharts.frontends.python.nodes import (
     EXTRAS,
+    always_true,
     calls_in_value,
     is_docstring,
     is_type_alias,
@@ -83,17 +82,6 @@ def signature_label(func: Node, src: Source, options: ChartOptions) -> str:
     if (returns := func.child_by_field_name("return_type")) is not None:
         label += f" -> {src.source_text(returns)}"
     return label
-
-
-def always_true(cond: str) -> bool:
-    """Whether a ``while`` condition is a single truthy constant (then only ``break`` exits)."""
-    try:
-        with warnings.catch_warnings():
-            warnings.simplefilter("ignore")
-            expr = ast.parse(cond, mode="eval").body
-    except (SyntaxError, ValueError):
-        return False
-    return isinstance(expr, ast.Constant) and bool(expr.value)
 
 
 def _field_text(node: Node, field: str, src: Source) -> str:

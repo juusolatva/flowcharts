@@ -103,10 +103,8 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 - Only syntax errors are detected (via `ast.parse`), plus `break`/`continue` outside a loop. Other compiler-only errors (duplicate parameters, `await` outside `async`, …) are charted as written.
 - Class bodies are charted only through their methods.
 - Call resolution is static and best-effort: shadowing by local assignment or `for`/`with`/`except` targets, inheritance, decorators that replace functions, `getattr` and other dynamic calls, star imports, `global`/`nonlocal` rebinding, and calls through instance attributes other than `self.m`/`cls.m` are not handled.
+- Files spelled two ways: module names from paths are NFC-normalized, so a decomposed `café.py` on macOS matches `import café`. On Linux, `café.py` precomposed and decomposed can sit side by side; both get the module name `café`, and `calls.link` leaves calls to it unlinked as ambiguous, although only the precomposed file is importable. A tie-break by exact spelling would need a flag on `Document`, so a `SCHEMA_VERSION` bump and a matching change in the desktop app's schema check, which is not worth it for a case that fails safe (nothing is linked wrongly).
 
 ## Potential future fixes
 
-Found in a code review and not yet done. Each is small; pick one up as its own change.
-
-- **Files spelled two ways.** Module names from paths are NFC-normalized (so a decomposed `café.py` on macOS matches `import café`). On Linux, `café.py` precomposed and decomposed can sit side by side; both get the module name `café`, and `calls.link` drops both as ambiguous although only the precomposed one is importable. A fix needs a tie-break by exact spelling that keeps the linker language-neutral.
-- **Imports that always run.** `_always_runs` in `frontends/python/calls.py` accepts imports in a module or function body and in `finally` blocks; an import under `if True:` still counts as conditional. `with` bodies stay conditional on purpose, since a context manager such as `contextlib.suppress(ImportError)` can swallow a failed import.
+None open. List small fixes found in code reviews here, each to be picked up as its own change.

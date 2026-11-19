@@ -18,6 +18,7 @@ from pyflowcharts.frontends.python.imports import (
     Scope,
     import_candidates,
 )
+from pyflowcharts.frontends.python.nodes import always_true
 from pyflowcharts.frontends.python.source import Source, identifier
 from pyflowcharts.ir import CallRef
 
@@ -124,7 +125,7 @@ class Resolver:
                     self._index(child, prefix, scope, cls)
 
     def _import(self, stmt: Node, scope: Scope) -> None:
-        certain = _always_runs(stmt)
+        certain = _always_runs(stmt, self.src)
         for name in stmt.children_by_field_name("name"):
             if name.type == "aliased_import":
                 dotted, alias = name.child_by_field_name("name"), name.child_by_field_name("alias")
@@ -199,17 +200,31 @@ class Resolver:
         return out + import_candidates(table.imports.get(first, []), rest)
 
 
-def _always_runs(stmt: Node) -> bool:
+def _always_runs(stmt: Node, src: Source) -> bool:
     """Whether ``stmt`` always runs once its module's or function's body does: it sits in that
-    body directly or through ``finally`` blocks only. A ``with`` body does not count: its
-    context manager can swallow the exception (``with suppress(ImportError):``)."""
+    body directly or through ``finally`` blocks and the first block of ``if True:`` (or another
+    truthy constant) only. A ``with`` body does not count: its context manager can swallow the
+    exception (``with suppress(ImportError):``)."""
     child, node = stmt, stmt.parent
     while node is not None and node.type not in ("module", "function_definition"):
         through_finally = node.type == "try_statement" and child.type == "finally_clause"
-        if node.type not in ("block", "finally_clause") and not through_finally:
+        through_if = node.type == "if_statement" and _always_taken(node, child, src)
+        if node.type not in ("block", "finally_clause") and not through_finally and not through_if:
             return False
         child, node = node, node.parent
     return True
+
+
+def _always_taken(if_statement: Node, child: Node, src: Source) -> bool:
+    """Whether ``child`` is the first block of an ``if`` whose condition is a truthy constant."""
+    consequence = if_statement.child_by_field_name("consequence")
+    condition = if_statement.child_by_field_name("condition")
+    return (
+        consequence is not None
+        and consequence.id == child.id
+        and condition is not None
+        and always_true(src.source_text(condition))
+    )
 
 
 def _parts(callee: Node) -> list[str]:

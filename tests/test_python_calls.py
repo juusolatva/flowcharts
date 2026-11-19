@@ -293,6 +293,49 @@ def f():
             "a.c.f",
             [("a.c", "f"), ("a", "c.f")],
         ),
+        # `if True:` (or another truthy constant) always runs its first block, and nothing else
+        (
+            "import a.b\nif True:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [],
+        ),
+        (
+            "import a.b\nif (True  # always\n):\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [],
+        ),
+        (
+            "import a.b\nif 1:\n    if True:\n        import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [],
+        ),
+        (
+            "import a.b\nif True:\n    pass\nelse:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b\nif x:\n    pass\nelif True:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b\nif False:\n    import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
+        (
+            "import a.b\nif x:\n    if True:\n        import a.b.c\ndef f():\n    a.b.c()\n",
+            "f",
+            "a.b.c",
+            [("a.b", "c")],
+        ),
         (
             "import a.b\nif x:\n    import a.b.c\ndef f():\n    a.b.c()\n",
             "f",
