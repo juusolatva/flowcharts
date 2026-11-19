@@ -203,6 +203,8 @@ class _Converter:
                 return self._try(node)
             case "with_statement":
                 prefix = _async_prefix(node)
+                # Trees with ERROR/MISSING nodes are skipped before conversion, and the
+                # grammar always gives an error-free `with` a with_clause.
                 clause = next(c for c in node.children if c.type == "with_clause")
                 return Step(
                     f"{prefix}with {self.src.source_text(clause)}", loc, body=self._body(node)
@@ -295,6 +297,7 @@ class _Converter:
                 case "else_clause":
                     orelse = self.block(clause.child_by_field_name("body"))
                 case "finally_clause":
+                    # Error-free trees only (see `with_statement`): a finally has a block.
                     finalbody = self.block(next(c for c in clause.children if c.type == "block"))
         return Try(self.src.location(node), self._body(node), tuple(handlers), orelse, finalbody)
 
