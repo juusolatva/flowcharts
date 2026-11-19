@@ -3,8 +3,11 @@ import socket
 import struct
 import threading
 import time
+from collections.abc import Callable
+from typing import Any
 
 import pytest
+from conftest import present
 from explorer_helpers import header, request
 
 from pyflowcharts.explorer.server import (
@@ -156,10 +159,7 @@ def test_static_responses_are_revalidated(running_server):
         running_server.port, "GET", "/static/views/app.mjs", headers=authed(running_server)
     )
     assert status == 200
-    assert header(
-        headers,
-        "Content-Type",
-    ).startswith("text/javascript")
+    assert present(header(headers, "Content-Type")).startswith("text/javascript")
     assert header(headers, "Cache-Control") == "no-cache"
     assert header(headers, "Content-Length") == str(len(body))
 
@@ -318,13 +318,26 @@ class OneLoopStop:
         return self.is_set()
 
 
+def run_watch(
+    workspace: Any,
+    server: Any,
+    stop: Any,
+    *,
+    log: Callable[[str], None],
+    interval: float = 1.0,
+) -> None:
+    """``watch`` with test doubles standing in for the workspace, server and stop event; the
+    keyword arguments stay typed, so pyright still checks them against ``watch``."""
+    watch(workspace, server, stop, interval=interval, log=log)
+
+
 def test_watch_logs_and_notifies(tmp_path):
     source = tmp_path / "a.py"
     source.write_text("def f():\n    pass\n")
     workspace = Workspace([source], [], ChartOptions(), stop=threading.Event())
     source.write_text("def f():\n    return 1\n\n\ndef g():\n    pass\n")
     server, stop, lines = FakeServer(), OneLoopStop(), []
-    watch(workspace, server, stop, interval=0.25, log=lines.append)
+    run_watch(workspace, server, stop, interval=0.25, log=lines.append)
     assert lines == ["re-parsed 1 file (generation 2), 0 warnings"]
     assert server.notified == 1
     assert stop.waits == [0.25]
@@ -335,7 +348,7 @@ def test_watch_does_not_notify_without_changes(tmp_path):
     source.write_text("def f():\n    pass\n")
     workspace = Workspace([source], [], ChartOptions(), stop=threading.Event())
     server, lines = FakeServer(), []
-    watch(workspace, server, OneLoopStop(), log=lines.append)
+    run_watch(workspace, server, OneLoopStop(), log=lines.append)
     assert lines == []
     assert server.notified == 0
 
@@ -352,7 +365,7 @@ def test_watch_survives_refresh_errors():
             return False
 
     workspace, server, stop, lines = Flaky(), FakeServer(), OneLoopStop(2), []
-    watch(workspace, server, stop, log=lines.append)
+    run_watch(workspace, server, stop, log=lines.append)
     assert workspace.calls == 2
     assert lines == ["error: refresh failed: denied"]
     assert len(stop.waits) == 2
@@ -393,7 +406,7 @@ def test_watch_logs_a_repeating_error_once_and_again_after_recovery():
             return outcome
 
     lines: list[str] = []
-    watch(Failing(), FakeServer(), OneLoopStop(5), log=lines.append)
+    run_watch(Failing(), FakeServer(), OneLoopStop(5), log=lines.append)
     assert lines == ["error: refresh failed: denied"] * 2
 
 
@@ -405,7 +418,7 @@ def test_watch_logs_a_changed_error_message():
             raise outcomes.pop(0)
 
     lines: list[str] = []
-    watch(Failing(), FakeServer(), OneLoopStop(2), log=lines.append)
+    run_watch(Failing(), FakeServer(), OneLoopStop(2), log=lines.append)
     assert lines == ["error: refresh failed: denied", "error: refresh failed: gone"]
 
 
@@ -415,7 +428,7 @@ def test_watch_logs_a_traceback_for_unexpected_errors():
             raise RuntimeError("boom")
 
     lines: list[str] = []
-    watch(Broken(), FakeServer(), OneLoopStop(2), log=lines.append)
+    run_watch(Broken(), FakeServer(), OneLoopStop(2), log=lines.append)
     assert lines[0] == "error: refresh failed: boom"
     assert len(lines) == 2  # the repeat is not logged again
     assert lines[1].startswith("Traceback")

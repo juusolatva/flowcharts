@@ -1,4 +1,5 @@
 import pytest
+from conftest import present
 
 from pyflowcharts.frontends.base import SourceError
 from pyflowcharts.frontends.python.source import Source
@@ -11,7 +12,7 @@ def src(text: str | bytes) -> Source:
 def first_stmt(text):
     """The first statement of the first function's body, with its source."""
     s = src(text)
-    return s, s.tree.root_node.children[0].child_by_field_name("body").children[0]
+    return s, present(s.tree.root_node.children[0].child_by_field_name("body")).children[0]
 
 
 def test_coding_cookie_and_bom():
@@ -50,7 +51,7 @@ def test_strings_are_verbatim():
 def test_locations_use_byte_columns_and_skip_trailing_comments():
     s = src("def f():\n    s = 'é'; g()\n    # trailing\n")
     func = s.tree.root_node.children[0]
-    g = func.child_by_field_name("body").children[-2]
+    g = present(func.child_by_field_name("body")).children[-2]
     assert (s.location(g).line, s.location(g).column) == (2, 14)
     assert s.location(func).end_line == 2
 
@@ -67,5 +68,6 @@ def test_many_live_trees_with_long_identifiers():
 def test_single_line_spacing_is_kept_as_written():
     s = src("def f(x: tuple[int, ...] = .5):\n    from . import m\n")
     func = s.tree.root_node.children[0]
-    assert s.source_text(func.child_by_field_name("parameters")) == "(x: tuple[int, ...] = .5)"
-    assert s.source_text(func.child_by_field_name("body").children[0]) == "from . import m"
+    params = present(func.child_by_field_name("parameters"))
+    assert s.source_text(params) == "(x: tuple[int, ...] = .5)"
+    assert s.source_text(present(func.child_by_field_name("body")).children[0]) == "from . import m"

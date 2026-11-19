@@ -2,6 +2,7 @@ import os
 from pathlib import Path, PurePosixPath
 
 import pytest
+from conftest import present
 
 from pyflowcharts.inputs import (
     EXPLORE_HINT,
@@ -141,13 +142,14 @@ def test_collisions(tmp_path):
         *("a/x.py", "b/x.py", "pkg/mod.py", "pkg/mod/__init__.py"),
         *("q/m.py", "q/m_extra.py", "t/mod/__init__.py"),
     )
-    assert "both map to 'x'" in collision_error(expand([tmp_path / "a", tmp_path / "b"], []).inputs)
+    walked = expand([tmp_path / "a", tmp_path / "b"], []).inputs
+    assert "both map to 'x'" in present(collision_error(walked))
     explicit_and_walked = expand([tmp_path / "a/x.py", tmp_path / "b"], []).inputs
-    assert "both map to 'x'" in collision_error(explicit_and_walked)
-    msg = collision_error(expand([tmp_path / "pkg"], []).inputs)  # longer key first
+    assert "both map to 'x'" in present(collision_error(explicit_and_walked))
+    msg = present(collision_error(expand([tmp_path / "pkg"], []).inputs))  # longer key first
     assert "maps to 'mod' and" in msg
     assert "share the directory 'mod'" in msg
-    msg = collision_error(expand([tmp_path / "pkg/mod.py", tmp_path / "t"], []).inputs)
+    msg = present(collision_error(expand([tmp_path / "pkg/mod.py", tmp_path / "t"], []).inputs))
     assert "maps to 'mod' and" in msg
     assert "share the directory 'mod'" in msg  # shorter first
     assert collision_error(expand([tmp_path / "q"], []).inputs) is None
@@ -187,7 +189,7 @@ def test_reserved_key_collision(tmp_path):
 def test_collision_hint_is_configurable(tmp_path):
     a = Input(tmp_path / "a/x.py", PurePosixPath("x"), True)
     b = Input(tmp_path / "b/x.py", PurePosixPath("x"), True)
-    assert collision_error([a, b], hint=EXPLORE_HINT).endswith(EXPLORE_HINT)
+    assert present(collision_error([a, b], hint=EXPLORE_HINT)).endswith(EXPLORE_HINT)
 
 
 def test_prefix_keys_allowed_when_requested(tmp_path):

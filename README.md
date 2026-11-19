@@ -181,6 +181,7 @@ uv run pytest          # tests
 node --test 'tests/js/*.test.mjs'   # explorer front-end tests (Node 24, no npm packages)
 uv run ruff check      # lint
 uv run ruff format     # format
+uv run pyright         # type check
 ```
 
 The architecture is frontend (tree-sitter, Python only for now) → language-neutral CFG engine → IR → backends (JSON, Graphviz, Mermaid). See `AGENTS.md` for the architecture and project rules.

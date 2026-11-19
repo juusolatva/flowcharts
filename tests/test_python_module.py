@@ -2,7 +2,7 @@ import ast
 import textwrap
 
 import pytest
-from conftest import assert_graph_integrity, flow
+from conftest import assert_graph_integrity, flow, present
 
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
@@ -46,7 +46,7 @@ def test_module_chart_when_top_level_does_work(src):
 
 def test_main_block_flow():
     src = 'import sys\ndef main(): pass\nif __name__ == "__main__":\n    main()\n'
-    m = parse(src).document.module
+    m = present(parse(src).document.module)
     cond = 'if __name__ == "__main__"'
     assert flow(m) == {
         ("module t", "import sys", None),
@@ -62,9 +62,9 @@ def test_main_block_flow():
 
 
 def test_module_location_spans_first_statement_to_last_token():
-    m = parse("\n\nmain()\nother()\n# c\n").document.module
+    m = present(parse("\n\nmain()\nother()\n# c\n").document.module)
     assert (m.location.line, m.location.end_line) == (3, 4)
-    m = parse("#!/usr/bin/env python3\n# head\n\nmain()\n").document.module
+    m = present(parse("#!/usr/bin/env python3\n# head\n\nmain()\n").document.module)
     assert (m.location.line, m.location.column, m.location.end_line) == (4, 0, 4)
 
 

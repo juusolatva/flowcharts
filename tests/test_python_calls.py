@@ -2,6 +2,7 @@ import textwrap
 from pathlib import PurePosixPath
 
 import pytest
+from conftest import present
 
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.frontends.python.calls import ModuleInfo, module_info
@@ -167,7 +168,7 @@ def test_same_function_nested_gives_two_calls():  # Review Focus 3
 
 def cands(src, qualname, text, key="pkg/mod"):
     d = doc_of(src, key=key)
-    chart = d.module if qualname == "<module>" else fn(d, qualname)
+    chart = present(d.module) if qualname == "<module>" else fn(d, qualname)
     call = next(c for c in chart.calls if c.text == text)
     return [(r.module, r.qualname) for r in call.candidates]
 
@@ -384,13 +385,13 @@ def test_resolution(src, qualname, text, expected):
     ],
 )
 def test_relative_imports(key, src, expected):
-    call = doc_of(src, key=key).module.calls[0]
+    call = present(doc_of(src, key=key).module).calls[0]
     assert [(r.module, r.qualname) for r in call.candidates] == expected
 
 
 def test_empty_module_name_gives_no_own_candidates():
     d = doc_of("def g(): pass\nfrom m import h\ng()\nh()\n", key="__init__")
-    assert [[(r.module, r.qualname) for r in c.candidates] for c in d.module.calls] == [
+    assert [[(r.module, r.qualname) for r in c.candidates] for c in present(d.module).calls] == [
         [],
         [("m", "h"), ("m", "h.__init__")],
     ]

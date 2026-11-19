@@ -15,6 +15,7 @@ pyflowcharts = "pyflowcharts.cli:main"
 
 [dependency-groups]
 dev = [
+    "pyright==1.1.414",
     "pytest",
     "pytest-cov>=7.1.0",
     "ruff",

@@ -54,14 +54,15 @@ def to_callgraph_digraph(documents: list[Document]) -> graphviz.Digraph:
         edge_attr={"fontname": "Helvetica"},
     )
     for cluster in clusters:
-        with graph.subgraph(
+        sub = graphviz.Digraph(
             name=f"cluster_{cluster.index}",
             graph_attr={"label": graphviz.escape(cluster.label)},
             node_attr={},
             edge_attr={},
-        ) as sub:
-            for qualname in cluster.charts:
-                sub.node(_dot_id((cluster.index, qualname)), label=graphviz.escape(qualname))
+        )
+        for qualname in cluster.charts:
+            sub.node(_dot_id((cluster.index, qualname)), label=graphviz.escape(qualname))
+        graph.subgraph(sub)
     for source, target in edges:
         graph.edge(_dot_id(source), _dot_id(target))
     return graph

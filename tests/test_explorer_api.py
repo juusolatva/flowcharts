@@ -22,8 +22,12 @@ def snap(tmp_path, text="def f():\n    pass\n\nf()\n", raw=None):
     return Workspace([path], [], ChartOptions()).current()
 
 
-def get(snapshot, path, *, g=True, render=None):
-    query = {"g": [str(snapshot.generation)]} if g is True else ({"g": [g]} if g else {})
+def get(snapshot, path, *, g: bool | str = True, render=None):
+    query: dict[str, list[str]] = {}
+    if g is True:
+        query = {"g": [str(snapshot.generation)]}
+    elif g:
+        query = {"g": [g]}
     kwargs = {"render": render} if render else {}
     return api.handle(path, query, snapshot, **kwargs)
 

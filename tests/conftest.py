@@ -11,6 +11,12 @@ def chart_of(src: str, qualname: str = "f", **opts) -> FunctionChart:
     return next(c for c in doc.functions if c.qualname == qualname)
 
 
+def present[T](value: T | None) -> T:
+    """``value``, asserted not ``None`` (a test failure, and a type narrowing)."""
+    assert value is not None
+    return value
+
+
 def flow(chart: Chart) -> set[tuple[str, str, str | None]]:
     label = {n.id: n.label for n in chart.nodes}
     return {(label[e.source], label[e.target], e.label) for e in chart.edges}
