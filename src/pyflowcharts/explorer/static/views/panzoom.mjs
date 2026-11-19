@@ -1,4 +1,5 @@
 import { createDragTracker } from "../lib/drag.mjs";
+import { movedView } from "../lib/viewstate.mjs";
 
 const DRAG_THRESHOLD = 4;
 const WHEEL_STEP = 1.15;
@@ -81,5 +82,14 @@ export function attachPanZoom(svg) {
       [box.x, box.y, box.width, box.height] = initial;
     },
     zoom: (factor) => zoomAt(factor, null),
+    // the viewBox if the user moved it, else null (see movedView)
+    view() {
+      const box = svg.viewBox.baseVal;
+      return movedView(initial, [box.x, box.y, box.width, box.height]);
+    },
+    restore(view) {
+      const box = svg.viewBox.baseVal;
+      [box.x, box.y, box.width, box.height] = view;
+    },
   };
 }
