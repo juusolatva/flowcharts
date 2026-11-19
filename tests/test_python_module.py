@@ -114,6 +114,28 @@ def test_unsupported_top_level_syntax_skips_module_chart():
     assert r.warnings[0].qualname == "<module>"
 
 
+@pytest.mark.parametrize(
+    "src",
+    [
+        "with:\n    pass\n",
+        "with (:\n    x\n",
+        "try:\n    x\nfinally:\n",
+        "try:\n    x\nfinally:\nprint(1)\n",
+        "try: x\nfinally:",
+    ],
+)
+@pytest.mark.parametrize("in_function", [False, True])
+def test_broken_with_or_finally_is_skipped_not_converted(src, in_function):
+    # tree-sitter recovers these with an empty with_clause or block and a MISSING node; the
+    # converter's unguarded next() calls rely on such trees being skipped before conversion.
+    if in_function:
+        src = "def f():\n" + textwrap.indent(src, "    ") + "\n"
+    r = parse(src)
+    assert r.document.module is None
+    assert not r.document.functions
+    assert len(r.warnings) == 1
+
+
 def test_unsupported_syntax_without_top_level_work_is_quiet():
     # No module chart would be drawn, so the misread syntax changes nothing: no warning.
     src = "class A[T = int]:\n    def m(self):\n        return 1\ntype Box[T = int] = list[T]\n"
