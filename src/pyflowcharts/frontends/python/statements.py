@@ -185,7 +185,7 @@ class _Converter:
                 return Terminal(NodeKind.RETURN, f"return {self.src.source_text(value)}", loc)
             case "raise_statement":
                 return Terminal(NodeKind.RAISE, self.src.source_text(node), loc)
-            case "if_statement" | "elif_clause":
+            case "if_statement":
                 return self._if(node)
             case "match_statement":
                 return self._match(node)
@@ -240,37 +240,30 @@ class _Converter:
         return Step(self.src.source_text(node), loc)
 
     def _if(self, node: Node) -> Branch:
-        arms = [Arm("True", self.block(node.child_by_field_name("consequence")))]
-        default: str | None = "False"
         alternatives = [c for c in node.children if c.type in ("elif_clause", "else_clause")]
-        if alternatives:
-            default = None
-            first = alternatives[0]
-            if first.type == "else_clause":
-                arms.append(Arm("False", self.block(first.child_by_field_name("body"))))
-            else:
-                # Each elif is a nested branch; the remaining clauses belong to it.
-                nested = self._if_chain(first, alternatives[1:])
-                arms.append(Arm("False", (nested,)))
-        return Branch(
-            f"if {self._text(node, 'condition')}", self.src.location(node), tuple(arms), default
-        )
+        return self._if_chain(node, alternatives)
 
     def _if_chain(self, clause: Node, rest: list[Node]) -> Branch:
+        """``clause`` (the ``if_statement`` or an ``elif_clause``) as a branch. The clauses in
+        ``rest`` follow it: an ``else`` is its False arm, and an ``elif`` is a nested branch
+        there, which takes the clauses after it."""
         arms = [Arm("True", self.block(clause.child_by_field_name("consequence")))]
         default: str | None = "False"
         if rest:
             default = None
-            if rest[0].type == "else_clause":
-                arms.append(Arm("False", self.block(rest[0].child_by_field_name("body"))))
+            following = rest[0]
+            if following.type == "else_clause":
+                arms.append(Arm("False", self.block(following.child_by_field_name("body"))))
             else:
-                arms.append(Arm("False", (self._if_chain(rest[0], rest[1:]),)))
+                arms.append(Arm("False", (self._if_chain(following, rest[1:]),)))
+        # stmts() gives the if_statement its calls; a nested elif is not a statement of its own.
+        calls = self._calls(clause) if clause.type == "elif_clause" else ()
         return Branch(
             f"if {self._text(clause, 'condition')}",
             self.src.location(clause),
             tuple(arms),
             default,
-            calls=self._calls(clause),
+            calls=calls,
         )
 
     def _match(self, node: Node) -> Branch:
