@@ -228,11 +228,13 @@ class _Converter:
         loc = self.src.location(node)
         children = named(node)
         inner = children[0] if len(children) == 1 else None
-        match inner.type if inner is not None else None:
-            case "ellipsis":
-                return None
-            case "assignment" | "augmented_assignment":
-                return Step(self.src.source_text(node), loc, hidden=not _calls_in_value(inner))
+        if inner is not None:
+            match inner.type:
+                case "ellipsis":
+                    return None
+                case "assignment" | "augmented_assignment":
+                    hidden = not _calls_in_value(inner)
+                    return Step(self.src.source_text(node), loc, hidden=hidden)
         return Step(self.src.source_text(node), loc)
 
     def _if(self, node: Node) -> Branch:

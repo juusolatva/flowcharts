@@ -99,7 +99,8 @@ def watch(
 
 class Handler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.0"
-    server: ExplorerServer
+    # Narrows the base's BaseServer: requests only ever arrive from an ExplorerServer.
+    server: ExplorerServer  # pyright: ignore[reportIncompatibleVariableOverride]
 
     def log_message(self, format: str, *args: Any) -> None:
         """Stay silent: per-request logging would flood the terminal."""
