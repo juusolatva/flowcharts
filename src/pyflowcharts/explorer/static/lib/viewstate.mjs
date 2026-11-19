@@ -18,9 +18,13 @@ export function viewKey(route) {
 }
 
 // The current viewBox ([x, y, width, height]) if the user moved it from the initial one, else
-// null: an untouched view should fit the redrawn chart, which may have grown.
+// null: an untouched view should fit the redrawn chart, which may have grown. The viewBox is
+// stored as 32-bit floats, so zooming in and back out lands near the start, not on it; a
+// difference below 1/10000 of the chart's size is far too small to see and counts as unmoved.
 export function movedView(initial, current) {
-  return current.every((value, i) => value === initial[i]) ? null : current;
+  const tolerance = 1e-4 * Math.max(initial[2], initial[3]);
+  const unmoved = current.every((value, i) => Math.abs(value - initial[i]) <= tolerance);
+  return unmoved ? null : current;
 }
 
 // Remembers the moved view of the chart last shown, so a re-parse that redraws the same chart

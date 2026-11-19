@@ -80,3 +80,23 @@ test("view memory: a null key (a notice, no chart) is ignored", () => {
   assert.deepEqual(memory.recall("a"), [1, 2, 3, 4]);
   assert.equal(memory.recall(null), null);
 });
+
+test("movedView: zooming in and back out counts as unmoved despite float error", () => {
+  // The viewBox is stored as 32-bit floats; replay the zoom buttons' arithmetic with that rounding.
+  const f = Math.fround;
+  const initial = [0, 0, 320, 279];
+  let box = initial.map(f);
+  for (const k of [1.25, 1.25, 1.15, 1 / 1.25, 1 / 1.15, 1 / 1.25]) {
+    const [x, y, w, h] = box;
+    const [cx, cy] = [x + w / 2, y + h / 2];
+    box = [f(cx - (cx - x) / k), f(cy - (cy - y) / k), f(w / k), f(h / k)];
+  }
+  assert.notDeepEqual(box, initial); // the error this test is about
+  assert.equal(movedView(initial, box), null);
+});
+
+test("movedView: a small real pan or zoom still counts as moved", () => {
+  // A drag pans at least the 4px drag threshold; one wheel step zooms by 15%.
+  assert.deepEqual(movedView([0, 0, 320, 279], [2, 0, 320, 279]), [2, 0, 320, 279]);
+  assert.notEqual(movedView([0, 0, 320, 279], [0, 0, 320 / 1.15, 279 / 1.15]), null);
+});
