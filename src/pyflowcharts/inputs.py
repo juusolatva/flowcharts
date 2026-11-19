@@ -122,34 +122,56 @@ def collision_error(
     *,
     hint: str = _HINT,
     allow_prefixes: bool = False,
+    fold_case: bool = False,
 ) -> str | None:
     """The error for two inputs whose outputs would overlap, or ``None``: a key in
     ``reserved`` (mapped to the message tail explaining why), the same key, or one key whose
     segments are a proper prefix of another's (``OUTDIR/K/`` is shared; skipped when
-    ``allow_prefixes``). ``hint`` ends the same-key and prefix messages."""
+    ``allow_prefixes``). ``hint`` ends the same-key and prefix messages. With ``fold_case``,
+    keys are compared as a case-insensitive file system would (``A`` and ``a`` collide)."""
+    fold = case_key if fold_case else _same
+    taken = {fold(key): (key, reason) for key, reason in (reserved or {}).items()}
     for item in inputs:
-        if (reason := (reserved or {}).get(item.key.as_posix())) is not None:
-            return f"error: output name collision: {item.path} maps to '{item.key}'; {reason}"
+        if (hit := taken.get(fold(item.key.as_posix()))) is not None:
+            key, reason = hit
+            how = "" if key == item.key.as_posix() else f", which differs only in case from '{key}'"
+            return f"error: output name collision: {item.path} maps to '{item.key}'{how}; {reason}"
     by_key: dict[tuple[str, ...], Input] = {}
     for item in inputs:
-        parts = item.key.parts
-        if parts in by_key:
-            first = by_key[parts]
-            return (
-                f"error: output name collision: {first.path} and {item.path} "
-                f"both map to '{item.key}'; {hint}"
-            )
+        parts = tuple(fold(part) for part in item.key.parts)
+        if (first := by_key.get(parts)) is not None:
+            if first.key == item.key:
+                maps = f"both map to '{item.key}'"
+            else:
+                maps = f"map to '{first.key}' and '{item.key}', which differ only in case"
+            return f"error: output name collision: {first.path} and {item.path} {maps}; {hint}"
         by_key[parts] = item
     for item in () if allow_prefixes else inputs:
-        parts = item.key.parts
+        parts = tuple(fold(part) for part in item.key.parts)
         for n in range(1, len(parts)):
             if (short := by_key.get(parts[:n])) is not None:
+                case = (
+                    ""
+                    if short.key.parts == item.key.parts[:n]
+                    else " (the names differ only in case)"
+                )
                 return (
                     f"error: output name collision: {short.path} maps to '{short.key}' and "
                     f"{item.path} to '{item.key}', which would share the directory "
-                    f"'{short.key}'; {hint}"
+                    f"'{short.key}'{case}; {hint}"
                 )
     return None
+
+
+def _same(name: str) -> str:
+    return name
+
+
+def case_key(name: str) -> str:
+    """``name`` as a case-insensitive file system compares it: each character upper-cased on
+    its own (``σ`` and ``ς`` both become ``Σ``), and kept when that would give several (``ß``
+    stays ``ß``, so it does not match ``ss``)."""
+    return "".join(upper if len(upper := char.upper()) == 1 else char for char in name)
 
 
 def drop_duplicate_keys(inputs: list[Input]) -> tuple[list[Input], list[str]]:

@@ -16,6 +16,7 @@ from pyflowcharts.backends.callgraph import (
 )
 from pyflowcharts.backends.dot import render, to_dot
 from pyflowcharts.backends.mermaid import to_mermaid
+from pyflowcharts.inputs import case_key
 from pyflowcharts.ir import Chart, Document
 from pyflowcharts.serialize import to_json
 
@@ -136,7 +137,7 @@ def _warn_case_clashes(doc: Document) -> None:
     """Warn about function charts whose file names differ only in case."""
     groups: dict[str, list[str]] = {}
     for chart in doc.functions:
-        groups.setdefault(_case_key(chart.qualname), []).append(chart.qualname)
+        groups.setdefault(case_key(chart.qualname), []).append(chart.qualname)
     for names in groups.values():
         if len(names) > 1:
             quoted = [f"'{name}'" for name in names]
@@ -146,10 +147,3 @@ def _warn_case_clashes(doc: Document) -> None:
                 "overwrite each other on case-insensitive file systems",
                 file=sys.stderr,
             )
-
-
-def _case_key(name: str) -> str:
-    """``name`` as a case-insensitive file system compares it: each character upper-cased on
-    its own (``σ`` and ``ς`` both become ``Σ``), and kept when that would give several (``ß``
-    stays ``ß``, so it does not match ``ss``)."""
-    return "".join(upper if len(upper := char.upper()) == 1 else char for char in name)

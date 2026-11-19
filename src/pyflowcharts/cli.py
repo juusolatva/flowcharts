@@ -77,7 +77,7 @@ def _expand_and_parse(
     # The key is only taken when a picture will actually be written.
     pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
     reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
-    if (collision := collision_error(expansion.inputs, reserved)) is not None:
+    if (collision := collision_error(expansion.inputs, reserved, fold_case=True)) is not None:
         print(collision, file=sys.stderr)
         return None
 

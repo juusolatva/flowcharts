@@ -209,3 +209,53 @@ def test_drop_duplicate_keys_keeps_first(tmp_path):
         f"{EXPLORE_HINT}; showing only {a.path}"
     )
     assert messages == [expected]
+
+
+def inp(path: str, key: str) -> Input:
+    return Input(Path(path), PurePosixPath(key), True)
+
+
+CASE = "which differ only in case"
+HINT = "run them separately with different --output directories"
+
+
+def test_keys_differing_only_in_case_collide_when_folding():
+    a, b = inp("A.py", "A"), inp("a.py", "a")
+    assert collision_error([a, b]) is None  # exact comparison, as the explorer uses
+    assert collision_error([a, b], fold_case=True) == (
+        f"error: output name collision: A.py and a.py map to 'A' and 'a', {CASE}; {HINT}"
+    )
+    nested = [inp("d/x.py", "d/x"), inp("D/x.py", "D/x")]
+    assert f"map to 'd/x' and 'D/x', {CASE}" in present(collision_error(nested, fold_case=True))
+
+
+def test_exact_same_key_message_is_unchanged_when_folding():
+    same = [inp("a/x.py", "x"), inp("b/x.py", "x")]
+    assert collision_error(same, fold_case=True) == collision_error(same)
+
+
+def test_case_only_prefix_collides_when_folding():
+    # A.py's function foo writes A/foo.svg; a/foo.py's module chart writes a/foo.svg.
+    inputs = [inp("A.py", "A"), inp("a/foo.py", "a/foo")]
+    assert collision_error(inputs) is None
+    assert collision_error(inputs, fold_case=True) == (
+        "error: output name collision: A.py maps to 'A' and a/foo.py to 'a/foo', which would "
+        f"share the directory 'A' (the names differ only in case); {HINT}"
+    )
+    assert collision_error(inputs, fold_case=True, allow_prefixes=True) is None
+
+
+def test_case_only_reserved_key_collides_when_folding():
+    inputs = [inp("CallGraph.py", "CallGraph")]
+    reserved = {"callgraph": "it is reserved"}
+    assert collision_error(inputs, reserved) is None
+    assert collision_error(inputs, reserved, fold_case=True) == (
+        "error: output name collision: CallGraph.py maps to 'CallGraph', which differs only "
+        "in case from 'callgraph'; it is reserved"
+    )
+
+
+def test_case_folding_is_per_character():
+    # As for function names in output.py: "ß" is not "ss", but "σ" and "ς" clash.
+    assert collision_error([inp("ß.py", "ß"), inp("ss.py", "ss")], fold_case=True) is None
+    assert collision_error([inp("σ.py", "σ"), inp("ς.py", "ς")], fold_case=True) is not None

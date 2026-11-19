@@ -375,6 +375,22 @@ def test_reserved_callgraph_key(tmp_path, capsys):
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json", "--no-call-graph"]) == 0
 
 
+def test_case_only_key_clash_is_an_error(tmp_path, capsys):
+    write(tmp_path / "src", "Mod.py", "def f(): pass\n")
+    write(tmp_path / "src", "mod.py", "def g(): pass\n")
+    assert main([str(tmp_path / "src"), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
+    assert "which differ only in case" in capsys.readouterr().err
+    assert not (tmp_path / "o").exists()
+
+
+def test_case_only_reserved_callgraph_key(tmp_path, capsys):
+    src = write(tmp_path, "CallGraph.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "dot"]) == 1
+    assert "differs only in case from 'callgraph'" in capsys.readouterr().err
+    assert not (tmp_path / "o").exists()
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "json"]) == 0  # no call graph
+
+
 def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, capsys):
     def boom(*a, **k):
         raise graphviz.ExecutableNotFound(["dot"])
