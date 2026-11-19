@@ -39,6 +39,28 @@ jobs:
       - name: Check formatting
         run: ruff format --check --diff
 
+  typecheck:
+    name: Pyright
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          activate-environment: true
+
+      # Same locked install as the lint job; pyright finds src/ and tests/ through
+      # `extraPaths` in pyproject.toml.
+      - name: Install dependencies
+        run: uv sync --locked --no-build --no-install-project
+
+      # The PyPI wrapper fetches the npm package of the pinned version on first run.
+      - name: Type check
+        run: pyright
+
   test:
     name: Tests (Python ${{ matrix.python-version }})
     runs-on: ubuntu-latest
