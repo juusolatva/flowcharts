@@ -3,7 +3,7 @@ import socket
 import struct
 import threading
 import time
-from typing import cast
+from typing import Any
 
 import pytest
 from conftest import present
@@ -317,14 +317,9 @@ class OneLoopStop:
         return self.is_set()
 
 
-def run_watch(workspace, server, stop, **kwargs) -> None:
+def run_watch(workspace: Any, server: Any, stop: Any, **kwargs: Any) -> None:
     """``watch`` with test doubles standing in for the workspace, server and stop event."""
-    watch(
-        cast(Workspace, workspace),
-        cast(ExplorerServer, server),
-        cast(threading.Event, stop),
-        **kwargs,
-    )
+    watch(workspace, server, stop, **kwargs)
 
 
 def test_watch_logs_and_notifies(tmp_path):
