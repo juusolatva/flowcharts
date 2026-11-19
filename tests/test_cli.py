@@ -3,6 +3,7 @@ from pathlib import Path, PurePosixPath
 
 import graphviz
 import pytest
+from conftest import present
 
 from pyflowcharts.cli import main
 from pyflowcharts.frontends.python import PythonFrontend
@@ -233,7 +234,7 @@ def test_directory_input_mirrors_tree(tmp_path):
     }
     doc = from_json((tmp_path / "o/pkg/io/load.json").read_text())
     assert doc.source == str(tmp_path / "src/pkg/io/load.py")
-    assert doc.module.qualname == "<module>"
+    assert present(doc.module).qualname == "<module>"
 
 
 def test_walked_empty_file_does_not_warn(tmp_path, capsys):
@@ -339,7 +340,8 @@ def test_directory_run_writes_call_graph_with_cross_file_edge(tmp_path):
     assert "label=pkg.app" in dot.replace('"', "")
     assert "-> " in dot
     call = from_json((tmp_path / "o/pkg/app.json").read_text()).functions[0].calls[0]
-    assert (call.target.module, call.target.qualname) == ("pkg.lib", "g")
+    target = present(call.target)
+    assert (target.module, target.qualname) == ("pkg.lib", "g")
 
 
 def test_json_only_writes_no_call_graph(tmp_path):
@@ -361,7 +363,7 @@ def test_function_filter_limits_picture_but_not_targets(tmp_path):
     assert main([str(src), "-o", out, "-f", "json", "dot", "--function", "f"]) == 0
     assert "0#g" not in (tmp_path / "o/callgraph.dot").read_text()
     call = from_json((tmp_path / "o/m.json").read_text()).functions[0].calls[0]
-    assert call.target.qualname == "g"
+    assert present(call.target).qualname == "g"
 
 
 def test_reserved_callgraph_key(tmp_path, capsys):
@@ -397,4 +399,4 @@ def test_select_keeps_source_text(tmp_path):
     src = write(tmp_path, "m.py", "def f():\n    pass\n\ndef g():\n    pass\n")
     result = PythonFrontend().parse(src.read_bytes(), str(src), ChartOptions())
     selected = _select([(Input(src, PurePosixPath("m"), explicit=True), result)], ["g"])
-    assert selected[0][1].source_text == result.source_text
+    assert present(selected)[0][1].source_text == result.source_text

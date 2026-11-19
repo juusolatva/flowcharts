@@ -2,6 +2,7 @@ import copy
 import json
 
 import pytest
+from conftest import present
 
 from pyflowcharts.ir import (
     MODULE_QUALNAME,
@@ -129,7 +130,7 @@ def test_reads_version_2_module_chart_without_calls(doc):
     del data["module"]["calls"]
     for chart in data["functions"]:
         del chart["calls"]
-    assert from_json(json.dumps(data)).module.calls == []
+    assert present(from_json(json.dumps(data)).module).calls == []
 
 
 def test_deterministic(doc):
