@@ -13,8 +13,8 @@ from pyflowcharts.cfg.model import CallSite
 from pyflowcharts.frontends.python.discovery import Found
 from pyflowcharts.frontends.python.imports import (
     Class,
-    Module,
-    Name,
+    FromImport,
+    ModuleImport,
     Scope,
     import_candidates,
 )
@@ -130,11 +130,11 @@ class Resolver:
                 dotted, alias = name.child_by_field_name("name"), name.child_by_field_name("alias")
                 if dotted is not None and alias is not None:
                     target = _text(dotted)
-                    scope.bind(_text(alias), Module(target, frozenset({target}), certain))
+                    scope.bind(_text(alias), ModuleImport(target, frozenset({target}), certain))
             elif name.type == "dotted_name":
                 parts = _text(name).split(".")
                 reachable = frozenset(".".join(parts[:i]) for i in range(1, len(parts) + 1))
-                scope.bind(parts[0], Module(parts[0], reachable, certain))
+                scope.bind(parts[0], ModuleImport(parts[0], reachable, certain))
 
     def _import_from(self, stmt: Node, scope: Scope) -> None:
         source = stmt.child_by_field_name("module_name")
@@ -146,7 +146,7 @@ class Resolver:
             if name.type == "aliased_import":
                 original = name.child_by_field_name("name") or name
                 bound = name.child_by_field_name("alias") or original
-            scope.bind(_text(bound), Name(module, _text(original)))
+            scope.bind(_text(bound), FromImport(module, _text(original)))
 
     def _from_module(self, source: Node) -> str | None:
         """The absolute module of ``from SOURCE import …``, or ``None`` above the top."""

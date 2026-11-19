@@ -19,8 +19,11 @@ def is_docstring(stmt: Node) -> bool:
     if stmt.type != "expression_statement" or len(children) != 1:
         return False
     value = children[0]
-    while value.type == "parenthesized_expression" and len(named(value)) == 1:
-        value = named(value)[0]
+    # Module code reaches this after `ast` accepts it but before the tree-sitter error check,
+    # so syntax newer than the grammar may parse with several children here; stop then, and
+    # the module gets its "unsupported syntax" warning instead of a crash.
+    while value.type == "parenthesized_expression" and len(inner := named(value)) == 1:
+        value = inner[0]
     strings = value.named_children if value.type == "concatenated_string" else [value]
     return all(s.type == "string" and _is_plain_string(s) for s in strings)
 

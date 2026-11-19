@@ -8,7 +8,7 @@ from pyflowcharts.ir import CallRef
 
 
 @dataclass(frozen=True)
-class Name:
+class FromImport:
     """``from module import name``: ``name`` may be a submodule or a name in ``module``."""
 
     module: str
@@ -16,7 +16,7 @@ class Name:
 
 
 @dataclass(frozen=True)
-class Module:
+class ModuleImport:
     """``import x.y`` (``base`` ``x``, reachable ``x`` and ``x.y``) or ``import x.y as z``
     (``base`` and reachable ``x.y`` only). ``certain`` when the import always runs: it sits
     directly in a module's or function's body, not in a ``try``, ``if`` or other block."""
@@ -26,7 +26,7 @@ class Module:
     certain: bool = False
 
 
-type Binding = Name | Module
+type Binding = FromImport | ModuleImport
 
 
 @dataclass
@@ -63,21 +63,21 @@ def import_candidates(bindings: list[Binding], rest: list[str]) -> list[CallRef]
     on its own (it may sit in one branch of a ``try`` or ``if``), but the ``import`` bindings
     of one package come together, the longest module first: with ``import a.b`` and
     ``import a.c``, ``a.c.f()`` must try ``a.c`` before ``a``."""
-    packages: dict[str, list[Module]] = {}
+    packages: dict[str, list[ModuleImport]] = {}
     for binding in bindings:
-        if isinstance(binding, Module):
+        if isinstance(binding, ModuleImport):
             packages.setdefault(binding.base, []).append(binding)
     out: list[CallRef] = []
     for binding in bindings:
         match binding:
-            case Name():
+            case FromImport():
                 out += _through(binding, rest)
-            case Module(base) if base in packages:
+            case ModuleImport(base) if base in packages:
                 out += _package_candidates(packages.pop(base), rest)
     return out
 
 
-def _package_candidates(modules: list[Module], rest: list[str]) -> list[CallRef]:
+def _package_candidates(modules: list[ModuleImport], rest: list[str]) -> list[CallRef]:
     """Candidates through the ``import`` bindings of one package, the longest module first.
     A module reachable through an import that always runs is certainly a module, so shorter
     fallbacks through it are dropped (none at all when the whole chain is a module)."""
@@ -94,12 +94,12 @@ def _package_candidates(modules: list[Module], rest: list[str]) -> list[CallRef]
 def _through(binding: Binding, rest: list[str]) -> list[CallRef]:
     """Candidates for calling ``rest`` (attribute parts, possibly none) on an import."""
     match binding:
-        case Name(module, name) if rest:
+        case FromImport(module, name) if rest:
             tail = ".".join(rest)
             return [CallRef(f"{module}.{name}", tail), CallRef(module, f"{name}.{tail}")]
-        case Name(module, name):
+        case FromImport(module, name):
             return [CallRef(module, name), CallRef(module, f"{name}.__init__")]
-        case Module(base, reachable):
+        case ModuleImport(base, reachable):
             full = base.split(".") + rest
             if ".".join(full) in reachable:
                 return []  # the chain names a module, and modules are not called
