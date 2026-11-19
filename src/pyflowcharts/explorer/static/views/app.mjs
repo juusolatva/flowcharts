@@ -4,7 +4,7 @@ import { opensSearch } from "../lib/keys.mjs";
 import { formatHash, parseHash } from "../lib/routing.mjs";
 import { fallbackFunction, nodeForLine } from "../lib/sourcemap.mjs";
 import { splitCallgraphId } from "../lib/svgids.mjs";
-import { chartState } from "../lib/viewstate.mjs";
+import { chartState, createViewMemory, viewKey } from "../lib/viewstate.mjs";
 import { mountSvg, showNotice } from "./chart.mjs";
 import { link } from "./dom.mjs";
 import { startLive } from "./live.mjs";
@@ -22,6 +22,8 @@ let index = null;
 let route = parseHash(location.hash);
 let current = null; // the open flowchart: { entry, chart, handle }
 let handle = null; // the mounted SVG's pan/zoom/select handle, call graph included
+let shownKey = null; // viewKey of what handle shows
+const views = createViewMemory(); // keeps pan/zoom when a re-parse redraws the same chart
 let selected = null;
 let token = 0;
 let busy = false;
@@ -103,6 +105,15 @@ function gone() {
     link("Search", "#", { onclick: (e) => { e.preventDefault(); sidebar.focusSearch(); } }));
 }
 
+// Mounts an SVG for the current route, restoring the pan/zoom it had before a redraw.
+function mount(text, handlers) {
+  handle = mountSvg(stage, text, handlers);
+  shownKey = viewKey(route);
+  const view = views.recall(shownKey);
+  if (view) handle.restore(view);
+  return handle;
+}
+
 async function showCallgraph(mine) {
   source.clear("Open a function to see its source.");
   if (!state.entries.some((e) => e.functions.length > 0 || e.has_module)) return notice(EMPTY);
@@ -110,7 +121,7 @@ async function showCallgraph(mine) {
   if (mine !== token) return;
   details.replaceChildren();
   current = null;
-  handle = mountSvg(stage, text, {
+  mount(text, {
     onClick(id) {
       if (id === null) return;
       const { doc, qualname } = splitCallgraphId(id);
@@ -148,7 +159,7 @@ async function showChart(mine, entry) {
   const chart = q === MODULE ? doc.module : doc.functions.find((f) => f.qualname === q);
   if (!chart) return gone();
   const withCall = new Set(chart.calls.filter((c) => c.target).map((c) => c.node));
-  handle = mountSvg(stage, svgText, {
+  mount(svgText, {
     hasCall: (id) => withCall.has(id),
     onClick: (id) => select(id),
     onDblClick(id) {
@@ -164,6 +175,7 @@ async function showChart(mine, entry) {
 
 async function show() {
   const mine = ++token;
+  if (handle) views.remember(shownKey, handle.view());
   if (!state) return;
   const entry = state.entries.find((e) => e.key === route.key);
   renderCrumbs($("crumbs"), route, entry);
