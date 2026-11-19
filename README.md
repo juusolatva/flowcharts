@@ -76,7 +76,7 @@ OUTDIR/
     └── Inventory.size@L25.svg # later duplicates (e.g. property setters) get @L<line>
 ```
 
-Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`). Functions in one file whose names differ only in case (`Foo` and `foo`) give a warning, because their files overwrite each other on case-insensitive file systems such as the macOS and Windows defaults; the exit code is not affected.
+Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`). Names are compared without regard to case, so `A.py` beside `a.py`, or `CallGraph.py`, is refused too: case-insensitive file systems such as the macOS and Windows defaults would overwrite one output with the other. Functions in one file whose names differ only in case (`Foo` and `foo`) give a warning, because their files overwrite each other on case-insensitive file systems such as the macOS and Windows defaults; the exit code is not affected.
 
 Methods are named `Class.method` and nested functions `outer.inner`.
 
