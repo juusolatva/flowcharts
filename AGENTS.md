@@ -109,4 +109,3 @@ Between parsing and the backends, `calls.py` links the calls of every document i
 Found in a code review and not yet done. Each is small; pick one up as its own change.
 
 - **Files spelled two ways.** Module names from paths are NFC-normalized (so a decomposed `café.py` on macOS matches `import café`). On Linux, `café.py` precomposed and decomposed can sit side by side; both get the module name `café`, and `calls.link` drops both as ambiguous although only the precomposed one is importable. A fix needs a tie-break by exact spelling that keeps the linker language-neutral.
-- **Imports that always run.** `_always_runs` in `frontends/python/calls.py` accepts imports in a module or function body and in `finally` blocks; an import under `if True:` still counts as conditional. `with` bodies stay conditional on purpose, since a context manager such as `contextlib.suppress(ImportError)` can swallow a failed import.

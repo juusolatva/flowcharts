@@ -1,7 +1,11 @@
-"""Small queries on tree-sitter nodes shared by the statement converter and module charts:
-statement children, docstrings, calls in assigned values, and type-alias statements."""
+"""Small queries on tree-sitter nodes shared by the statement converter, module charts and call
+resolution: statement children, docstrings, calls in assigned values, type-alias statements
+and always-true conditions."""
 
 from __future__ import annotations
+
+import ast
+import warnings
 
 from tree_sitter import Node
 
@@ -56,3 +60,15 @@ def is_type_alias(node: Node) -> bool:
     left = node.child_by_field_name("left")
     target = left.named_children[0] if left is not None and left.named_child_count else None
     return target is not None and target.type in ("identifier", "generic_type")
+
+
+def always_true(cond: str) -> bool:
+    """Whether a condition is a single truthy constant: ``while True:`` exits only through
+    ``break``, and ``if True:`` always runs its first block."""
+    try:
+        with warnings.catch_warnings():
+            warnings.simplefilter("ignore")
+            expr = ast.parse(cond, mode="eval").body
+    except (SyntaxError, ValueError):
+        return False
+    return isinstance(expr, ast.Constant) and bool(expr.value)
