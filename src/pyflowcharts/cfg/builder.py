@@ -30,6 +30,20 @@ from pyflowcharts.labels import shorten
 
 Frontier = list[tuple[str, str | None]]
 
+# Each `finally` body is copied for every way out of its `try`, so nesting cleanup inside
+# cleanup multiplies the chart. Real code stays far below these (the largest function in a
+# typical site-packages has a few hundred nodes); a crafted file is cut off before it can
+# exhaust memory.
+MAX_NODES = 10_000
+MAX_EDGES = 4 * MAX_NODES
+
+
+class ChartTooLarge(Exception):
+    """The chart would exceed ``MAX_NODES`` nodes or ``MAX_EDGES`` edges."""
+
+    def __init__(self) -> None:
+        super().__init__(f"more than {MAX_NODES} nodes")
+
 
 class StrayLoopTransfer(Exception):
     """A ``break``/``continue`` outside any loop (a syntax error the frontend reports)."""
@@ -219,6 +233,8 @@ class ChartBuilder:
         suffix: str = "",
         calls: tuple[CallSite, ...] = (),
     ) -> str:
+        if len(self.nodes) >= MAX_NODES:
+            raise ChartTooLarge
         node_id = self.node_id(loc, suffix)
         self.nodes.append(Node(node_id, kind, self.label(label), None if suffix else loc))
         self.calls += [Call(node_id, site.text, list(site.candidates), None) for site in calls]
@@ -228,6 +244,8 @@ class ChartBuilder:
         return node_id
 
     def connect(self, frontier: Frontier, target_id: str) -> None:
+        if len(self.edges) + len(frontier) > MAX_EDGES:
+            raise ChartTooLarge
         for source_id, label in frontier:
             self.edges.append(Edge(source_id, target_id, label))
 

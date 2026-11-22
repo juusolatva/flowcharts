@@ -1,7 +1,7 @@
 import pytest
 from conftest import flow
 
-from pyflowcharts.cfg.builder import StrayLoopTransfer, build_chart
+from pyflowcharts.cfg.builder import MAX_NODES, ChartTooLarge, StrayLoopTransfer, build_chart
 from pyflowcharts.cfg.model import (
     Arm,
     Block,
@@ -476,3 +476,33 @@ def test_candidates_are_copied_into_calls():
     body = (Step("g()", at(2), calls=(S("g", (ref,)),)),)
     _, _, calls = build_chart("f", "def f()", LOC, body, ChartOptions())
     assert calls == [Call("f#L2C4", "g", [ref], None)]
+
+
+# -- size limit --------------------------------------------------------------
+
+
+def nested_finally(depth: int, line: int = 2) -> Block:
+    """``try: if a(): return 1 / f()  finally: <nested>``, ``depth`` levels deep: each level
+    copies its cleanup for the normal, return and exception paths."""
+    if depth == 0:
+        return (Step("g()", at(line)),)
+    body = (
+        Branch(
+            "a()",
+            at(line + 1),
+            (Arm("True", (Terminal(NodeKind.RETURN, "return 1", at(line + 2)),)),),
+            "False",
+        ),
+        Step("f()", at(line + 3)),
+    )
+    return (try_stmt(line, body, finalbody=nested_finally(depth - 1, line + 5)),)
+
+
+def test_runaway_finally_copies_stop_at_the_node_limit():
+    with pytest.raises(ChartTooLarge) as e:
+        chart(nested_finally(12))  # about 3**12 copies of the innermost body
+    assert "10000 nodes" in str(e.value)
+
+
+def test_limit_leaves_ordinary_nesting_alone():
+    assert len(chart(nested_finally(4)).nodes) < MAX_NODES

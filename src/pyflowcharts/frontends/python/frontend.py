@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import PurePath, PurePosixPath
 
-from pyflowcharts.cfg.builder import StrayLoopTransfer, build_chart
+from pyflowcharts.cfg.builder import ChartTooLarge, StrayLoopTransfer, build_chart
 from pyflowcharts.frontends.base import Diagnostic, ParseResult, SourceError
 from pyflowcharts.frontends.python.calls import Resolver, module_info
 from pyflowcharts.frontends.python.discovery import Found, find_functions, parameters, returns
 from pyflowcharts.frontends.python.module import STRAY, UNSUPPORTED, does_work, module_chart
+from pyflowcharts.frontends.python.nodes import named
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.frontends.python.statements import convert_body, signature_label
 from pyflowcharts.frontends.python.validate import first_error_line, validate
@@ -44,6 +45,10 @@ class PythonFrontend:
                 except StrayLoopTransfer as e:
                     message = f"syntax error in '{func.qualname}'; function skipped"
                     warnings.append(Diagnostic(path, e.loc.line, message, func.qualname))
+                except ChartTooLarge as e:
+                    message = f"'{func.qualname}' is too large to chart ({e}); function skipped"
+                    line = func.node.start_point.row + 1
+                    warnings.append(Diagnostic(path, line, message, func.qualname))
             module = None
             if options.show_module and validation.outside is None:
                 module = _module(src, path, options, warnings, resolver)
@@ -103,4 +108,9 @@ def _module(
         return module_chart(root, src, path, options, resolver)
     except StrayLoopTransfer as e:
         warnings.append(Diagnostic(path, e.loc.line, STRAY, MODULE_QUALNAME))
+        return None
+    except ChartTooLarge as e:
+        message = f"module code is too large to chart ({e}); module chart skipped"
+        line = named(root)[0].start_point.row + 1  # where the module chart starts
+        warnings.append(Diagnostic(path, line, message, MODULE_QUALNAME))
         return None
