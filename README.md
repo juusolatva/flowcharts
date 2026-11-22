@@ -95,7 +95,7 @@ A parameter named like a function hides it, as in Python. Not resolved: shadowin
 | Code | Meaning |
 |---|---|
 | 0 | Success (a file named on the command line with nothing to chart, or a directory with no source files, only produces a warning) |
-| 1 | A function was skipped because of a syntax error (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
+| 1 | A function was skipped because of a syntax error or the size limit (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
 ## Native desktop GUI (preview)
@@ -169,6 +169,10 @@ At startup the explorer exits with code 1 when nothing could be parsed and there
 ### Syntax errors
 
 A function that does not parse is skipped with a warning such as `mod.py:12: warning: syntax error in 'broken'; function skipped`, and every other function in the file is still charted. A syntax error outside every function gives `warning: syntax error outside functions; nearby code may be missing`, and the file gets no module chart. A top-level `break`/`continue` outside a loop skips only the module chart (`warning: syntax error in module code; module chart skipped`). Any of these warnings makes the exit code 1. `--function` accepts skipped names, so selecting only valid functions gives exit 0.
+
+### Size limit
+
+Each `finally` body is drawn once for every way out of its `try`, so cleanup nested inside cleanup multiplies a chart's size. A chart is cut off at 10,000 nodes or 40,000 edges: that function is skipped with `mod.py:3: warning: 'f' is too large to chart (more than 10000 nodes); function skipped` (or `more than 40000 edges`) (or the module chart with `warning: module code is too large to chart …; module chart skipped`), and the rest of the file is still charted. Real code stays far below the limit; the largest function among 56,000 charts of an installed Python library has 517 nodes. Like the other skip warnings, it makes the exit code 1.
 
 ### Known simplifications
 

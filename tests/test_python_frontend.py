@@ -35,6 +35,44 @@ def test_break_outside_loop_is_a_skipped_function():
     assert r.warnings[0].line == 2
 
 
+def nested_finally(depth: int, indent: str) -> str:
+    if depth == 0:
+        return f"{indent}g()\n"
+    return (
+        f"{indent}try:\n{indent}    if a():\n{indent}        return 1\n{indent}    f()\n"
+        f"{indent}finally:\n" + nested_finally(depth - 1, indent + "    ")
+    )
+
+
+def test_too_large_function_is_skipped_and_others_charted():
+    source = "def big():\n" + nested_finally(12, "    ") + "\ndef small():\n    return 1\n"
+    r = PythonFrontend().parse(source.encode(), "t.py", ChartOptions())
+    assert [c.qualname for c in r.document.functions] == ["small"]
+    assert [str(w) for w in r.warnings] == [
+        "t.py:1: warning: 'big' is too large to chart (more than 10000 nodes); function skipped"
+    ]
+
+
+def test_function_over_the_edge_limit_names_that_limit():
+    handlers = "".join(f"    except E{i}:\n        pass\n" for i in range(300))
+    inner = "".join(f"        except E{i}:\n            pass\n" for i in range(300))
+    source = f"def big():\n    try:\n        try:\n            f()\n{inner}{handlers}"
+    r = PythonFrontend().parse(source.encode(), "t.py", ChartOptions())
+    assert r.document.functions == []
+    assert [str(w) for w in r.warnings] == [
+        "t.py:1: warning: 'big' is too large to chart (more than 40000 edges); function skipped"
+    ]
+
+
+def test_too_large_module_chart_is_skipped_and_functions_charted():
+    source = "def small():\n    return 1\n\n" + nested_finally(12, "")
+    r = PythonFrontend().parse(source.encode(), "t.py", ChartOptions())
+    assert [c.qualname for c in r.document.functions] == ["small"]
+    assert r.document.module is None
+    message = "module code is too large to chart (more than 10000 nodes); module chart skipped"
+    assert [str(w) for w in r.warnings] == [f"t.py:1: warning: {message}"]
+
+
 def test_outside_error_is_one_warning_without_qualname():
     r = parse("x = = 1\ndef g():\n    pass\n")
     assert [c.qualname for c in r.document.functions] == ["g"]
