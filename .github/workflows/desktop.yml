@@ -84,7 +84,7 @@ jobs:
             build/desktop/test-*.txt
           retention-days: 7
 
-      - name: Test worker protocol
+      - name: Test worker protocol and transport
         run: >-
           uv run --locked --no-build --no-sync
-          pytest tests/test_desktop_worker.py -q
+          pytest tests/test_desktop_worker.py tests/test_desktop_transport.py -q
