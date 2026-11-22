@@ -170,7 +170,7 @@ A function that does not parse is skipped with a warning such as `mod.py:12: war
 
 ### Size limit
 
-Each `finally` body is drawn once for every way out of its `try`, so cleanup nested inside cleanup multiplies a chart's size. A chart is cut off at 10,000 nodes or 40,000 edges: that function is skipped with `mod.py:3: warning: 'f' is too large to chart (more than 10000 nodes); function skipped` (or the module chart with `warning: module code is too large to chart …; module chart skipped`), and the rest of the file is still charted. Real code stays far below the limit; the largest function among 56,000 charts of an installed Python library has 517 nodes. Like the other skip warnings, it makes the exit code 1.
+Each `finally` body is drawn once for every way out of its `try`, so cleanup nested inside cleanup multiplies a chart's size. A chart is cut off at 10,000 nodes or 40,000 edges: that function is skipped with `mod.py:3: warning: 'f' is too large to chart (more than 10000 nodes); function skipped` (or `more than 40000 edges`) (or the module chart with `warning: module code is too large to chart …; module chart skipped`), and the rest of the file is still charted. Real code stays far below the limit; the largest function among 56,000 charts of an installed Python library has 517 nodes. Like the other skip warnings, it makes the exit code 1.
 
 ### Known simplifications
 

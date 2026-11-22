@@ -501,7 +501,24 @@ def nested_finally(depth: int, line: int = 2) -> Block:
 def test_runaway_finally_copies_stop_at_the_node_limit():
     with pytest.raises(ChartTooLarge) as e:
         chart(nested_finally(12))  # about 3**12 copies of the innermost body
-    assert "10000 nodes" in str(e.value)
+    assert str(e.value) == "more than 10000 nodes"
+
+
+def nested_handlers(count: int) -> Block:
+    """An outer ``try`` with ``count`` handlers around an inner one with as many: every node
+    of the inner ``try`` gets an exception edge to every outer handler."""
+
+    def handlers(line: int) -> tuple[Handler, ...]:
+        return tuple(Handler(f"except E{i}", at(line + i), ()) for i in range(count))
+
+    inner = try_stmt(3, (Step("f()", at(4)),), handlers(5))
+    return (try_stmt(2, (inner,), handlers(5 + count)),)
+
+
+def test_exception_edges_stop_at_the_edge_limit():
+    with pytest.raises(ChartTooLarge) as e:
+        chart(nested_handlers(300))  # about 300 * 300 edges from fewer than 700 nodes
+    assert str(e.value) == "more than 40000 edges"
 
 
 def test_limit_leaves_ordinary_nesting_alone():

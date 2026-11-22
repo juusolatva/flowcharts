@@ -17,7 +17,7 @@ from functools import partial
 from typing import TYPE_CHECKING
 
 from pyflowcharts.cfg.model import Try
-from pyflowcharts.ir import EXCEPTION_LABEL, Edge, NodeKind
+from pyflowcharts.ir import EXCEPTION_LABEL, NodeKind
 
 if TYPE_CHECKING:
     from pyflowcharts.cfg.builder import ChartBuilder, Frontier
@@ -36,7 +36,7 @@ class ExceptionScope:
         for source_id in node_ids:
             if self.handler_ids:
                 for handler_id in self.handler_ids:
-                    builder.edges.append(Edge(source_id, handler_id, EXCEPTION_LABEL))
+                    builder.add_edge(source_id, handler_id, EXCEPTION_LABEL)
             elif self.pending is not None:
                 self.pending.append((source_id, EXCEPTION_LABEL))
 

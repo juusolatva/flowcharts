@@ -53,6 +53,17 @@ def test_too_large_function_is_skipped_and_others_charted():
     ]
 
 
+def test_function_over_the_edge_limit_names_that_limit():
+    handlers = "".join(f"    except E{i}:\n        pass\n" for i in range(300))
+    inner = "".join(f"        except E{i}:\n            pass\n" for i in range(300))
+    source = f"def big():\n    try:\n        try:\n            f()\n{inner}{handlers}"
+    r = PythonFrontend().parse(source.encode(), "t.py", ChartOptions())
+    assert r.document.functions == []
+    assert [str(w) for w in r.warnings] == [
+        "t.py:1: warning: 'big' is too large to chart (more than 40000 edges); function skipped"
+    ]
+
+
 def test_too_large_module_chart_is_skipped_and_functions_charted():
     source = "def small():\n    return 1\n\n" + nested_finally(12, "")
     r = PythonFrontend().parse(source.encode(), "t.py", ChartOptions())
