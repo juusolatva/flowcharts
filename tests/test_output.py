@@ -259,7 +259,7 @@ def test_failed_cleanup_does_not_hide_the_write_error(tmp_path, monkeypatch, cap
 
 
 def test_failed_picture_is_reported_and_the_rest_written(tmp_path, monkeypatch, capsys):
-    def render(chart, fmt):
+    def render(chart, fmt, warn=None):
         if chart.qualname == "f":
             raise DotFailed("rendering took longer than 300 s")
         return b"<svg/>"
@@ -278,7 +278,7 @@ def test_failed_picture_is_reported_and_the_rest_written(tmp_path, monkeypatch, 
 
 
 def test_failed_call_graph_is_reported(tmp_path, monkeypatch, capsys):
-    def render_callgraph(documents, fmt):
+    def render_callgraph(documents, fmt, warn=None):
         raise DotFailed("Error: trouble")
 
     monkeypatch.setattr("pyflowcharts.output.render_callgraph", render_callgraph)
@@ -287,3 +287,19 @@ def test_failed_call_graph_is_reported(tmp_path, monkeypatch, capsys):
     assert w.write_failed
     assert "cannot render" in capsys.readouterr().err
     assert files(tmp_path) == {"callgraph.dot"}
+
+
+def test_graphviz_warnings_name_the_picture(tmp_path, monkeypatch, capsys):
+    def render(chart, fmt, warn=None):
+        assert warn is not None
+        warn("Warning: scaling by 0.5")
+        return b"PNG"
+
+    monkeypatch.setattr("pyflowcharts.output.render", render)
+    w = Writer(tmp_path, ["png"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert not w.write_failed
+    assert (
+        capsys.readouterr().err == f"warning: {tmp_path / 'm' / 'f.png'}: Warning: scaling by 0.5\n"
+    )
+    assert files(tmp_path) == {"m/f.png"}

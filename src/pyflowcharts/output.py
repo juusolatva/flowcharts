@@ -8,6 +8,7 @@ import secrets
 import stat
 import sys
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
@@ -17,7 +18,7 @@ from pyflowcharts.backends.callgraph import (
     to_callgraph_mermaid,
 )
 from pyflowcharts.backends.dot import render, to_dot
-from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound
+from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound, Warn
 from pyflowcharts.backends.mermaid import to_mermaid
 from pyflowcharts.inputs import case_key
 from pyflowcharts.ir import Chart, Document
@@ -83,7 +84,7 @@ class Writer:
             self.outdir / "callgraph",
             lambda: to_callgraph_dot(documents),
             lambda: to_callgraph_mermaid(documents),
-            lambda fmt: render_callgraph(documents, fmt),
+            lambda fmt, warn: render_callgraph(documents, fmt, warn=warn),
         )
 
     def _chart(self, chart: Chart, directory: Path, name: str) -> None:
@@ -91,7 +92,7 @@ class Writer:
             directory / name,
             lambda: to_dot(chart),
             lambda: to_mermaid(chart),
-            lambda fmt: render(chart, fmt),
+            lambda fmt, warn: render(chart, fmt, warn=warn),
         )
 
     def _picture(
@@ -99,7 +100,7 @@ class Writer:
         base: Path,
         dot: Callable[[], str],
         mermaid: Callable[[], str],
-        image: Callable[[Literal["svg", "png"]], bytes],
+        image: Callable[[Literal["svg", "png"], Warn], bytes],
     ) -> None:
         """Write ``base.<ext>`` for each picture format. The renderers are called lazily, so
         they are looked up when used."""
@@ -112,7 +113,7 @@ class Writer:
                     self._save(target, mermaid())
                 case "svg" | "png" if not self.graphviz_missing:
                     try:
-                        data = image(fmt)
+                        data = image(fmt, partial(_graphviz_warning, target))
                     except DotNotFound:
                         print(GRAPHVIZ_MISSING, file=sys.stderr)
                         self.graphviz_missing = True
@@ -212,6 +213,12 @@ def _restrict_to(fd: int, temporary: Path, target: Path) -> None:
         current = stat.S_IMODE(os.fstat(fd).st_mode)
         if current & ~existing.st_mode:
             os.chmod(temporary, current & existing.st_mode)
+
+
+def _graphviz_warning(target: Path, message: str) -> None:
+    """A problem Graphviz reported while still writing ``target`` (the exit code is
+    unaffected, as before)."""
+    print(f"warning: {target}: {message}", file=sys.stderr)
 
 
 def _warn_case_clashes(doc: Document) -> None:

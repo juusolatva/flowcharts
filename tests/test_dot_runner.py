@@ -63,3 +63,16 @@ def test_non_zero_exit_without_message(monkeypatch):
     fake_run(monkeypatch, subprocess.CompletedProcess([], -9, b"", b""))
     with pytest.raises(DotFailed, match="dot exited with status -9"):
         run_dot("digraph {}", "svg", timeout=30)
+
+
+def test_warnings_from_a_successful_render_are_passed_on(monkeypatch):
+    stderr = b"Warning: graph is too large for cairo-renderer bitmaps. Scaling by 0.5\n\n"
+    fake_run(monkeypatch, subprocess.CompletedProcess([], 0, b"PNG", stderr))
+    warnings = []
+    assert run_dot("digraph {}", "png", timeout=30, warn=warnings.append) == b"PNG"
+    assert warnings == ["Warning: graph is too large for cairo-renderer bitmaps. Scaling by 0.5"]
+
+
+def test_warnings_are_optional(monkeypatch):
+    fake_run(monkeypatch, subprocess.CompletedProcess([], 0, b"PNG", b"Warning: x\n"))
+    assert run_dot("digraph {}", "png", timeout=30) == b"PNG"
