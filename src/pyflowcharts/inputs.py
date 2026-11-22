@@ -44,7 +44,12 @@ def expand(paths: list[Path], excludes: list[str]) -> Expansion:
     errors: list[str] = []
     for path in paths:
         if not path.is_dir():
-            found.append(Input(path, PurePosixPath(path.stem), explicit=True))
+            # Python 3.12 and 3.13 give "..py" the stem "." and "...py" the stem "..",
+            # which would put the outputs in or above OUTDIR itself.
+            if path.stem in ("", ".", ".."):
+                errors.append(f"{path}: error: cannot name its output; rename the file")
+            else:
+                found.append(Input(path, PurePosixPath(path.stem), explicit=True))
             continue
         walk_errors: list[str] = []
         walked = _walk(path, excludes, walk_errors)

@@ -88,6 +88,19 @@ def test_explicit_files_pass_through(tmp_path):
     assert [(i.key.as_posix(), i.explicit) for i in e.inputs] == [("nope", True), ("x", True)]
 
 
+@pytest.mark.parametrize("name", ["..py", "...py"])
+def test_explicit_file_never_gets_a_key_outside_the_output_directory(tmp_path, name):
+    # Python 3.12 and 3.13 read these names as stem "." or ".." plus ".py"; 3.14 sees no suffix.
+    path = tmp_path / name
+    path.write_text("def f(): pass\n")
+    e = expand([path], [])
+    for item in e.inputs:
+        assert item.key.parts
+        assert ".." not in item.key.parts
+    if not e.inputs:
+        assert e.errors == [f"{path}: error: cannot name its output; rename the file"]
+
+
 @pytest.mark.parametrize(
     "patterns, expected",
     [

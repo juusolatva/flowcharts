@@ -1,6 +1,9 @@
+import os
+import stat
 from pathlib import PurePosixPath
 
 import graphviz
+import pytest
 
 from pyflowcharts.calls import link
 from pyflowcharts.frontends.python import PythonFrontend
@@ -108,3 +111,148 @@ def test_final_sigma_clashes_with_sigma(tmp_path, capsys):
     doc = parse("def σ(): pass\ndef ς(): pass\n")
     Writer(tmp_path, ["dot"]).write(doc, PurePosixPath("t"))
     assert "functions 'σ' and 'ς' differ only in case" in capsys.readouterr().err
+
+
+def link_or_skip(link, target, *, directory=False):
+    try:
+        link.symlink_to(target, target_is_directory=directory)
+    except OSError as err:  # Windows without the symlink privilege
+        pytest.skip(f"cannot create symlinks: {err}")
+
+
+def test_symlinked_output_directory_is_refused(tmp_path, capsys):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    link_or_skip(tmp_path / "out", elsewhere, directory=True)
+    w = Writer(tmp_path / "out", ["json", "mermaid"])
+    w.write(parse("def f(): pass\nmain()\n"), PurePosixPath("m"))
+    w.write_callgraph([parse_as("def g(): pass\n", "n")])
+    assert w.write_failed
+    assert list(elsewhere.iterdir()) == []
+    err = capsys.readouterr().err
+    assert err.count("symbolic link") == 1, err
+    assert str(tmp_path / "out") in err
+
+
+def test_symlinked_subdirectory_is_refused_and_the_rest_written(tmp_path, capsys):
+    out = tmp_path / "out"
+    out.mkdir()
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    link_or_skip(out / "pkg", elsewhere, directory=True)
+    w = Writer(out, ["json", "mermaid"])
+    w.write(parse("def f(): pass\nmain()\n"), PurePosixPath("pkg/m"))
+    w.write(parse("def f(): pass\n"), PurePosixPath("pkg/n"))
+    w.write(parse("def f(): pass\n"), PurePosixPath("top"))
+    assert w.write_failed
+    assert list(elsewhere.iterdir()) == []
+    assert capsys.readouterr().err.count("symbolic link") == 1
+    assert files(out) == {"top.json", "top/f.mmd"}
+
+
+def test_symlinked_output_file_is_replaced_not_followed(tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious")
+    out = tmp_path / "out"
+    out.mkdir()
+    link_or_skip(out / "m.json", victim)
+    w = Writer(out, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert not w.write_failed
+    assert victim.read_text() == "precious"
+    assert not (out / "m.json").is_symlink()
+    assert '"functions"' in (out / "m.json").read_text()
+
+
+def test_hard_linked_output_file_is_replaced_not_overwritten(tmp_path):
+    victim = tmp_path / "victim.txt"
+    victim.write_text("precious")
+    out = tmp_path / "out"
+    out.mkdir()
+    try:
+        (out / "m.json").hardlink_to(victim)
+    except OSError as err:
+        pytest.skip(f"cannot create hard links: {err}")
+    Writer(out, ["json"]).write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert victim.read_text() == "precious"
+    assert '"functions"' in (out / "m.json").read_text()
+
+
+def test_failed_write_leaves_neither_partial_nor_temporary_file(tmp_path, monkeypatch, capsys):
+    (tmp_path / "m.json").write_text("old")
+
+    def fail(*args):
+        raise OSError(28, "No space left on device")
+
+    monkeypatch.setattr("pyflowcharts.output.os.replace", fail)
+    w = Writer(tmp_path, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert w.write_failed
+    assert "No space left on device" in capsys.readouterr().err
+    assert files(tmp_path) == {"m.json"}
+    assert (tmp_path / "m.json").read_text() == "old"
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+def test_new_files_get_the_usual_permissions(tmp_path):
+    previous = os.umask(0o027)
+    try:
+        Writer(tmp_path, ["json"]).write(parse("def f(): pass\n"), PurePosixPath("m"))
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE((tmp_path / "m.json").stat().st_mode) == 0o640
+
+
+@pytest.mark.parametrize("key", [".", "..", "../m", "a/../../m", "/abs/m"])
+def test_keys_outside_the_output_directory_are_rejected(tmp_path, key):
+    writer = Writer(tmp_path / "out", ["json"])
+    doc = parse("def f(): pass\n")
+    with pytest.raises(ValueError, match="output key"):
+        writer.write(doc, PurePosixPath(key))
+    assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        (0o600, 0o600),  # a private export stays private
+        (0o666, 0o644),  # a planted world-writable file does not widen the umask
+        (0o755, 0o644),  # execute bits are not copied
+    ],
+)
+def test_rewritten_file_permissions(tmp_path, before, after):
+    (tmp_path / "m.json").write_text("old")
+    (tmp_path / "m.json").chmod(before)
+    previous = os.umask(0o022)
+    try:
+        Writer(tmp_path, ["json"]).write(parse("def f(): pass\n"), PurePosixPath("m"))
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE((tmp_path / "m.json").stat().st_mode) == after
+    assert '"functions"' in (tmp_path / "m.json").read_text()
+
+
+def test_long_output_names_still_fit(tmp_path):
+    # 245 bytes with ".json": within the usual 255-byte name limit, with no room for a
+    # temporary name built from it.
+    key = "f" * 240
+    w = Writer(tmp_path, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath(key))
+    assert not w.write_failed
+    assert files(tmp_path) == {f"{key}.json"}
+
+
+def test_failed_cleanup_does_not_hide_the_write_error(tmp_path, monkeypatch, capsys):
+    def fail_replace(*args):
+        raise OSError(28, "No space left on device")
+
+    def fail_unlink(self, missing_ok=False):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr("pyflowcharts.output.os.replace", fail_replace)
+    monkeypatch.setattr("pyflowcharts.output.Path.unlink", fail_unlink)
+    w = Writer(tmp_path, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert w.write_failed
+    assert "No space left on device" in capsys.readouterr().err
