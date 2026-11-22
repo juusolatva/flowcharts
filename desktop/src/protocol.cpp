@@ -30,8 +30,12 @@ bool FrameReader::feed(const QByteArray &bytes, QVector<QJsonObject> &frames, QS
         QJsonParseError parseError;
         const auto document = QJsonDocument::fromJson(m_buffer, &parseError);
         m_buffer.clear();
-        if (parseError.error != QJsonParseError::NoError || !document.isObject()) {
+        if (parseError.error != QJsonParseError::NoError) {
             error = "Invalid JSON response from engine: " + parseError.errorString();
+            return false;
+        }
+        if (!document.isObject()) {
+            error = "Invalid JSON response from engine: expected a JSON object";
             return false;
         }
         frames.append(document.object());
