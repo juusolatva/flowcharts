@@ -64,10 +64,6 @@ def convert_statements(
     return _Converter(src, options, resolver, scope).stmts(stmts)
 
 
-def convert_block(block: Node | None, src: Source, options: ChartOptions) -> Block:
-    return _Converter(src, options).block(block)
-
-
 def _async_prefix(node: Node) -> str:
     """``"async "`` for an ``async def``/``for``/``with``, else ``""``."""
     return "async " if node.children and node.children[0].type == "async" else ""

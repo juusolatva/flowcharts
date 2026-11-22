@@ -170,7 +170,7 @@ class ChartBuilder:
         if (pending := self._pending_finally()) is not None:
             pending.breaks.extend(frontier)
         else:
-            self._innermost_loop("break", loc).breaks.extend(frontier)
+            self.loops[-1].breaks.extend(frontier)
 
     def route_continue(self, frontier: Frontier, loc: SourceLocation) -> None:
         if not self.loops:
@@ -178,7 +178,7 @@ class ChartBuilder:
         if (pending := self._pending_finally()) is not None:
             pending.continues.extend(frontier)
         else:
-            self.connect(frontier, self._innermost_loop("continue", loc).loop_id)
+            self.connect(frontier, self.loops[-1].loop_id)
 
     def route_return(self, frontier: Frontier) -> None:
         """A ``return`` runs every pending ``finally`` body (at any loop depth) on its
@@ -202,11 +202,6 @@ class ChartBuilder:
         if self.pending and self.pending[-1].loop_depth == len(self.loops):
             return self.pending[-1]
         return None
-
-    def _innermost_loop(self, kind: str, loc: SourceLocation) -> LoopContext:
-        if not self.loops:
-            raise StrayLoopTransfer(kind, loc)
-        return self.loops[-1]
 
     @contextmanager
     def exception_scope(self, scope: ExceptionScope | None) -> Iterator[None]:
