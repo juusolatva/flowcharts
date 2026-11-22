@@ -86,7 +86,7 @@ private slots:
             error));
         ChartBrowser browser;
         browser.setWorkspace(workspace);
-        auto *model = browser.findChild<QTreeView *>()->model();
+        const auto *model = browser.findChild<QTreeView *>()->model();
         QCOMPARE(model->index(1, 0).data().toString(), QString("Makefile"));
         QCOMPARE(model->index(2, 0).data().toString(), QString("a.py"));
     }
