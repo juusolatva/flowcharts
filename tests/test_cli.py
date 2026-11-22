@@ -165,6 +165,23 @@ def test_unwritable_output_dir_is_an_error(tmp_path, capsys):
     assert "cannot write" in capsys.readouterr().err
 
 
+def test_symlinked_default_output_directory_is_refused(tmp_path, monkeypatch, capsys):
+    # A checkout can ship `flowcharts` as a link to a directory the user cares about.
+    src = write(tmp_path, "m.py", "def f(): pass\nmain()\n")
+    precious = tmp_path / "precious"
+    precious.mkdir()
+    (precious / "m.json").write_text("keep")
+    try:
+        (tmp_path / "flowcharts").symlink_to(precious, target_is_directory=True)
+    except OSError as err:
+        pytest.skip(f"cannot create symlinks: {err}")
+    monkeypatch.chdir(tmp_path)
+    assert main([str(src), "-f", "json", "mermaid"]) == 1
+    assert "symbolic link" in capsys.readouterr().err
+    assert sorted(p.name for p in precious.iterdir()) == ["m.json"]
+    assert (precious / "m.json").read_text() == "keep"
+
+
 def test_write_failure_does_not_stop_other_outputs(tmp_path, capsys):
     long_name = "f" * 300  # longer than typical file-name limits (255 bytes)
     src = write(tmp_path, "m.py", f"def {long_name}(): pass\ndef g(): pass\n")

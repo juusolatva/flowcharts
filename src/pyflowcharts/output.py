@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+import secrets
 import sys
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
@@ -29,11 +31,23 @@ GRAPHVIZ_NOT_FOUND = (
 GRAPHVIZ_MISSING = GRAPHVIZ_NOT_FOUND + " or use --format json dot mermaid"
 
 
+class _LinkRefused(Exception):
+    """A directory on the way to an output is a symbolic link or junction."""
+
+    def __init__(self, link: Path) -> None:
+        self.link = link
+
+
 class Writer:
     """Writes the selected formats.
 
     Reports a missing Graphviz once (then skips images) and reports each file that
     cannot be written, continuing with the rest.
+
+    The output tree may come from someone else (the default ``flowcharts/`` of a checkout),
+    so nothing is written through a link: a symbolic link or junction at OUTDIR or at a
+    directory below it is refused, and each file is written to a new temporary file and
+    then moved over the old name, which replaces a link there instead of following it.
     """
 
     def __init__(self, outdir: Path, formats: list[str]) -> None:
@@ -47,6 +61,8 @@ class Writer:
         """Write ``doc`` under ``OUTDIR/key``: ``key.json``, ``key.<ext>`` for the module chart
         and ``key/<qualname>.<ext>`` for each function chart. Directories are created only
         for files that are written."""
+        if key.is_absolute() or not key.parts or ".." in key.parts:
+            raise ValueError(f"output key {str(key)!r} is outside the output directory")
         base = self.outdir / key
         if "json" in self.formats:
             self._save(base.parent / f"{base.name}.json", to_json(doc))
@@ -103,34 +119,72 @@ class Writer:
                         self._save(target, data)
 
     def _mkdir(self, directory: Path) -> bool:
-        """Create ``directory`` once. A failure is reported once and remembered, and covers
-        the directories below it."""
+        """Create ``directory`` (OUTDIR or below it) once. A failure is reported once and
+        remembered, and covers the directories below it."""
         if directory not in self._dirs:
             if any(self._dirs.get(parent) is False for parent in directory.parents):
                 self._dirs[directory] = False  # already reported for the parent
                 return False
             try:
-                directory.mkdir(parents=True, exist_ok=True)
+                self._make_dirs(directory)
                 self._dirs[directory] = True
+            except _LinkRefused as refused:
+                print(
+                    f"error: refusing to write through symbolic link {refused.link}",
+                    file=sys.stderr,
+                )
+                self.write_failed = True
+                self._dirs[directory] = False
+                self._dirs[refused.link] = False  # covers everything else below the link
             except OSError as err:
                 self._report(directory, err)
                 self._dirs[directory] = False
         return self._dirs[directory]
 
+    def _make_dirs(self, directory: Path) -> None:
+        """Create OUTDIR's parents as given, then OUTDIR and each directory below it on the
+        way to ``directory``, refusing links."""
+        self.outdir.parent.mkdir(parents=True, exist_ok=True)
+        path = self.outdir
+        for part in ("", *directory.relative_to(self.outdir).parts):
+            path = path / part if part else path
+            if path.is_symlink() or path.is_junction():
+                raise _LinkRefused(path)
+            path.mkdir(exist_ok=True)
+
     def _save(self, target: Path, data: str | bytes) -> None:
         if not self._mkdir(target.parent):
             return
         try:
-            if isinstance(data, bytes):
-                target.write_bytes(data)
-            else:
-                target.write_text(data, encoding="utf-8")
+            _replace(target, data)
         except OSError as err:
             self._report(target, err)
 
     def _report(self, target: Path, err: OSError) -> None:
         print(f"error: cannot write {target}: {err.strerror or err}", file=sys.stderr)
         self.write_failed = True
+
+
+def _replace(target: Path, data: str | bytes) -> None:
+    """Write ``data`` to a new file beside ``target`` and move it over ``target``.
+
+    The temporary file is created exclusively (never through an existing name) with the
+    usual permissions after the umask, and text is written as ``Path.write_text`` would.
+    """
+    temporary = target.parent / f".{target.name}.{secrets.token_hex(8)}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(temporary, flags, 0o666)
+    try:
+        if isinstance(data, bytes):
+            with os.fdopen(fd, "wb") as file:
+                file.write(data)
+        else:
+            with os.fdopen(fd, "w", encoding="utf-8") as file:
+                file.write(data)
+        os.replace(temporary, target)
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
 
 
 def _warn_case_clashes(doc: Document) -> None:

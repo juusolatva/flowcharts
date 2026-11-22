@@ -78,6 +78,8 @@ OUTDIR/
 
 Files found by walking a directory keep their path relative to it: `pyflowcharts src/` writes `src/pkg/io/load.py` to `OUTDIR/pkg/io/load.json`, `load.svg` and `load/`. Two inputs whose outputs would overlap (the same relative path, or `pkg/mod.py` beside a `pkg/mod/` package) are an error before anything is written, and so is a file whose output would be `callgraph` (rename it, or pass `--no-call-graph`). Names are compared without regard to case, so `A.py` beside `a.py`, or `CallGraph.py`, is refused too: case-insensitive file systems such as the macOS and Windows defaults would overwrite one output with the other. Functions in one file whose names differ only in case (`Foo` and `foo`) give a warning, because their files overwrite each other on case-insensitive file systems such as the macOS and Windows defaults; the exit code is not affected.
 
+The output tree is never written through a link, since a checkout can ship its own `flowcharts/`. If `OUTDIR` or a directory below it is a symbolic link (or a Windows junction), nothing is written there and the run exits with an error; pass the link's real path with `-o` to write there anyway. Each output file is written to a new temporary file and then moved into place, so an existing link or hard link at that name is replaced, not followed, and a failed write leaves the previous file intact. A file named on the command line whose output name would be `.` or `..` (on Python 3.12 and 3.13, `..py` and `...py`) is an error; rename it.
+
 Methods are named `Class.method` and nested functions `outer.inner`.
 
 ### Call graphs
