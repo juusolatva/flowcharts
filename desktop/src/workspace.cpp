@@ -102,9 +102,11 @@ QString Workspace::nodeTitle(const ChartRef &ref, const QString &id) const {
         return {};
     const QJsonObject doc = document(function->document)["document"].toObject();
     const QString module = doc.value("module_name").toString();
+    // Without a module name (a top-level __init__.py), name the file, as the cluster does.
+    const QString owner = module.isEmpty() ? doc.value("source").toString() : module;
     if (function->qualname == "<module>")
-        return module + " (module)";
-    return module + '.' + function->qualname;
+        return owner + " (module)";
+    return owner + (module.isEmpty() ? ": " : ".") + function->qualname;
 }
 
 QString Workspace::nodeForLine(const ChartRef &ref, int line) const {
@@ -175,11 +177,14 @@ QStringList Workspace::diagnostics() const {
             messages.append(entry["error"].toString());
         for (const auto &skipped : entry["skipped"].toArray()) {
             const auto warning = skipped.toObject();
-            messages.append(QString("%1:%2: %3: %4")
-                                .arg(entry["source"].toString())
-                                .arg(warning["line"].toInt())
-                                .arg(warning["qualname"].toString())
-                                .arg(warning["message"].toString()));
+            // One arg() call: chained ones would expand a "%2" in a file name.
+            const int line = warning["line"].toInt();
+            const QString where =
+                line > 0 ? QString("%1:%2").arg(entry["source"].toString(), QString::number(line))
+                         : entry["source"].toString();
+            messages.append(
+                QString("%1: %2: %3")
+                    .arg(where, warning["qualname"].toString(), warning["message"].toString()));
         }
     }
     return messages;
