@@ -4,9 +4,9 @@ from __future__ import annotations
 
 import contextlib
 import os
+import secrets
 import stat
 import sys
-import tempfile
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -176,19 +176,22 @@ def _replace(target: Path, data: str | bytes) -> None:
     """Write ``data`` to a new file beside ``target`` and move it over ``target``.
 
     The temporary file has a short random name (so any output name that fits also fits it)
-    and is created exclusively, never through an existing name. Text is written as
+    and is created exclusively, never through an existing name, with read and write
+    permission as the umask allows. It gets no more access than a regular file already at
+    ``target`` had, so a private export stays private. Text is written as
     ``Path.write_text`` would.
     """
-    fd, name = tempfile.mkstemp(prefix=".", suffix=".tmp", dir=target.parent)
-    temporary = Path(name)
+    temporary = target.parent / f".{secrets.token_hex(8)}.tmp"
+    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
+    fd = os.open(temporary, flags, _READ_WRITE)
     try:
+        _restrict_to(fd, temporary, target)
         if isinstance(data, bytes):
             with os.fdopen(fd, "wb") as file:
                 file.write(data)
         else:
             with os.fdopen(fd, "w", encoding="utf-8") as file:
                 file.write(data)
-        os.chmod(temporary, _mode(target))
         os.replace(temporary, target)
     except BaseException:
         with contextlib.suppress(OSError):  # keep the error that got us here
@@ -196,18 +199,17 @@ def _replace(target: Path, data: str | bytes) -> None:
         raise
 
 
-def _mode(target: Path) -> int:
-    """Read and write bits for a new ``target``: what the umask allows, and no more than an
-    existing regular file there had (a private export stays private). Execute and special
-    bits are never set."""
-    umask = os.umask(0)  # the CLI is single-threaded; this only reads the mask
-    os.umask(umask)
-    mode = _READ_WRITE & ~umask
-    with contextlib.suppress(OSError):
-        existing = target.lstat()  # a link at the name says nothing about our file
-        if stat.S_ISREG(existing.st_mode):
-            mode &= existing.st_mode
-    return mode
+def _restrict_to(fd: int, temporary: Path, target: Path) -> None:
+    """Drop the permissions an existing regular file at ``target`` did not grant. A link
+    there says nothing about our file, so it is not followed."""
+    try:
+        existing = target.lstat()
+    except OSError:
+        return
+    if stat.S_ISREG(existing.st_mode):
+        current = stat.S_IMODE(os.fstat(fd).st_mode)
+        if current & ~existing.st_mode:
+            os.chmod(temporary, current & existing.st_mode)
 
 
 def _warn_case_clashes(doc: Document) -> None:

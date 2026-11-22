@@ -95,7 +95,8 @@ def test_explicit_file_never_gets_a_key_outside_the_output_directory(tmp_path, n
     path.write_text("def f(): pass\n")
     e = expand([path], [])
     for item in e.inputs:
-        assert item.key.parts and ".." not in item.key.parts
+        assert item.key.parts
+        assert ".." not in item.key.parts
     if not e.inputs:
         assert e.errors == [f"{path}: error: cannot name its output; rename the file"]
 

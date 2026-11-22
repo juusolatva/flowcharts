@@ -205,21 +205,31 @@ def test_new_files_get_the_usual_permissions(tmp_path):
 
 @pytest.mark.parametrize("key", [".", "..", "../m", "a/../../m", "/abs/m"])
 def test_keys_outside_the_output_directory_are_rejected(tmp_path, key):
+    writer = Writer(tmp_path / "out", ["json"])
+    doc = parse("def f(): pass\n")
     with pytest.raises(ValueError, match="output key"):
-        Writer(tmp_path / "out", ["json"]).write(parse("def f(): pass\n"), PurePosixPath(key))
+        writer.write(doc, PurePosixPath(key))
     assert not (tmp_path / "out").exists()
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
-def test_rewritten_file_keeps_its_permissions(tmp_path):
+@pytest.mark.parametrize(
+    "before, after",
+    [
+        (0o600, 0o600),  # a private export stays private
+        (0o666, 0o644),  # a planted world-writable file does not widen the umask
+        (0o755, 0o644),  # execute bits are not copied
+    ],
+)
+def test_rewritten_file_permissions(tmp_path, before, after):
     (tmp_path / "m.json").write_text("old")
-    (tmp_path / "m.json").chmod(0o600)
+    (tmp_path / "m.json").chmod(before)
     previous = os.umask(0o022)
     try:
         Writer(tmp_path, ["json"]).write(parse("def f(): pass\n"), PurePosixPath("m"))
     finally:
         os.umask(previous)
-    assert stat.S_IMODE((tmp_path / "m.json").stat().st_mode) == 0o600
+    assert stat.S_IMODE((tmp_path / "m.json").stat().st_mode) == after
     assert '"functions"' in (tmp_path / "m.json").read_text()
 
 
