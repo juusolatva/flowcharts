@@ -249,6 +249,13 @@ def f():
             [("pkg.mod", "outer.C.s")],
         ),
         ("from m import C\ndef f():\n    C.s()\n", "f", "C.s", [("m.C", "s"), ("m", "C.s")]),
+        # an imported subpackage: every module split, the longest module first
+        (
+            "from pkg import sub\ndef f():\n    sub.mod.g()\n",
+            "f",
+            "sub.mod.g",
+            [("pkg.sub.mod", "g"), ("pkg.sub", "mod.g"), ("pkg", "sub.mod.g")],
+        ),
         # module imports
         ("import x.y\ndef f():\n    x.y.g()\n", "f", "x.y.g", [("x.y", "g")]),
         ("import x.y\ndef f():\n    x.g()\n", "f", "x.g", [("x", "g")]),

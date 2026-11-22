@@ -95,8 +95,14 @@ def _through(binding: Binding, rest: list[str]) -> list[CallRef]:
     """Candidates for calling ``rest`` (attribute parts, possibly none) on an import."""
     match binding:
         case FromImport(module, name) if rest:
-            tail = ".".join(rest)
-            return [CallRef(f"{module}.{name}", tail), CallRef(module, f"{name}.{tail}")]
+            # ``name`` may be a module or a package with submodules below it; every split,
+            # the longest module first, then ``name`` as an attribute of ``module``.
+            base = f"{module}.{name}"
+            splits = [
+                CallRef(".".join([base, *rest[:k]]), ".".join(rest[k:]))
+                for k in range(len(rest) - 1, -1, -1)
+            ]
+            return [*splits, CallRef(module, ".".join([name, *rest]))]
         case FromImport(module, name):
             return [CallRef(module, name), CallRef(module, f"{name}.__init__")]
         case ModuleImport(base, reachable):
