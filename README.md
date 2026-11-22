@@ -80,6 +80,8 @@ Files found by walking a directory keep their path relative to it: `pyflowcharts
 
 The output tree is never written through a link, since a checkout can ship its own `flowcharts/`. If `OUTDIR` or a directory below it is a symbolic link (or a Windows junction), nothing is written there and the run exits with an error; pass the link's real path with `-o` to write there anyway. Each output file is written to a new temporary file and then moved into place, so an existing link or hard link at that name is replaced, not followed, and a failed write leaves the previous file intact. A file named on the command line whose output name would be `.` or `..` (on Python 3.12 and 3.13, `..py` and `...py`) is an error; rename it.
 
+File names are taken as they are, including ones that are not valid UTF-8 or that contain newlines or control characters (possible on Linux and macOS). The JSON `source` field writes undecodable bytes as `\udcff`-style escapes, so reading the JSON back gives the original name. Chart labels and messages show such bytes as `\xff` and other characters that are not printable as escapes such as `\n` or `\x1b`, so a file name cannot break a line or send control sequences to the terminal. A file whose declared encoding decodes to text that is not valid Unicode (for example a lone surrogate from `raw_unicode_escape`) is reported as unreadable, and the rest of the run continues.
+
 Methods are named `Class.method` and nested functions `outer.inner`.
 
 ### Call graphs
