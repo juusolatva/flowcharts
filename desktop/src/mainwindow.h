@@ -38,9 +38,12 @@ private:
     void reportError(const QString &message);
 
     EngineClient m_engine;
-    QString m_program;
-    QStringList m_arguments;
-    QString m_workingDirectory;
+    struct EngineCommand {
+        QString program;
+        QStringList arguments;
+        QString workingDirectory;
+    };
+    EngineCommand m_command;
     QStringList m_paths;
     Workspace m_workspace;
     ChartRef m_current;

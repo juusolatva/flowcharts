@@ -43,6 +43,9 @@ static LaunchOptions defaultEngine() {
 // Restores the current directory when a test that changes it returns or fails.
 struct CurrentDirectory {
     QString previous = QDir::currentPath();
+    CurrentDirectory() = default;
+    CurrentDirectory(const CurrentDirectory &) = delete;
+    CurrentDirectory &operator=(const CurrentDirectory &) = delete;
     ~CurrentDirectory() { QDir::setCurrent(previous); }
 };
 

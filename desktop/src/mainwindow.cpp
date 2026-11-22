@@ -17,10 +17,10 @@ namespace flowcharts {
 
 MainWindow::MainWindow(const QString &engine, const QStringList &arguments,
                        const QString &workingDirectory, QWidget *parent)
-    : QMainWindow(parent), m_program(engine), m_arguments(arguments),
-      m_workingDirectory(workingDirectory), m_browser(new ChartBrowser(this)),
-      m_graph(new GraphView(this)), m_source(new SourceView(this)),
-      m_diagnostics(new QPlainTextEdit(this)), m_sourceDock(new QDockWidget("Source", this)),
+    : QMainWindow(parent), m_command{engine, arguments, workingDirectory},
+      m_browser(new ChartBrowser(this)), m_graph(new GraphView(this)),
+      m_source(new SourceView(this)), m_diagnostics(new QPlainTextEdit(this)),
+      m_sourceDock(new QDockWidget("Source", this)),
       m_diagnosticsDock(new QDockWidget("Diagnostics", this)),
       m_status(new QLabel("Starting engine…", this)), m_selection(new QLabel(this)) {
     setWindowTitle("Flowcharts");
@@ -47,7 +47,7 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments,
     menuBar()->findChild<QMenu *>("viewMenu")->addAction(browserDock->toggleViewAction());
     connectViews();
     connectEngine();
-    m_engine.start(m_program, m_arguments, m_workingDirectory);
+    m_engine.start(m_command.program, m_command.arguments, m_command.workingDirectory);
 }
 
 void MainWindow::connectViews() {
@@ -172,7 +172,7 @@ void MainWindow::buildActions() {
 
 void MainWindow::restartEngine() {
     m_workspace = Workspace{};
-    m_engine.start(m_program, m_arguments, m_workingDirectory);
+    m_engine.start(m_command.program, m_command.arguments, m_command.workingDirectory);
     if (!m_paths.isEmpty())
         openPaths(m_paths);
 }
