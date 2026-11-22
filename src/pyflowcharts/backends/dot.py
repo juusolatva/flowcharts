@@ -6,6 +6,7 @@ from typing import Literal
 
 import graphviz
 
+from pyflowcharts.backends.dot_runner import PICTURE_TIMEOUT, run_dot
 from pyflowcharts.ir import EXCEPTION_LABEL, Chart, NodeKind
 
 SHAPES: dict[NodeKind, str] = {
@@ -48,5 +49,6 @@ def to_dot(chart: Chart) -> str:
 
 
 def render(chart: Chart, fmt: Literal["svg", "png"]) -> bytes:
-    """Render with Graphviz. Raises ``graphviz.ExecutableNotFound`` if ``dot`` is missing."""
-    return to_digraph(chart).pipe(format=fmt)
+    """Render with Graphviz. Raises `DotNotFound` if ``dot`` is missing and `DotFailed` if
+    it fails or takes longer than `PICTURE_TIMEOUT`."""
+    return run_dot(to_dot(chart), fmt, timeout=PICTURE_TIMEOUT)

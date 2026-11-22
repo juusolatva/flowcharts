@@ -1,10 +1,10 @@
 import shutil
 from pathlib import Path, PurePosixPath
 
-import graphviz
 import pytest
 from conftest import present
 
+from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound
 from pyflowcharts.cli import main
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.inputs import Input
@@ -112,12 +112,23 @@ def test_stem_collision(tmp_path, capsys):
 
 def test_missing_graphviz(tmp_path, monkeypatch, capsys):
     def boom(*args, **kwargs):
-        raise graphviz.ExecutableNotFound(["dot"])
+        raise DotNotFound
 
     monkeypatch.setattr("pyflowcharts.output.render", boom)
     src = write(tmp_path, "m.py", "def f(): pass\n")
     assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "json"]) == 2
     assert "Graphviz" in capsys.readouterr().err
+    assert (tmp_path / "o/m.json").exists()
+
+
+def test_failed_render_exits_1_and_writes_the_rest(tmp_path, monkeypatch, capsys):
+    def boom(*args, **kwargs):
+        raise DotFailed("Error: out of memory")
+
+    monkeypatch.setattr("pyflowcharts.output.render", boom)
+    src = write(tmp_path, "m.py", "def f(): pass\n")
+    assert main([str(src), "-o", str(tmp_path / "o"), "-f", "svg", "json"]) == 1
+    assert "cannot render" in capsys.readouterr().err
     assert (tmp_path / "o/m.json").exists()
 
 
@@ -410,7 +421,7 @@ def test_case_only_reserved_callgraph_key(tmp_path, capsys):
 
 def test_missing_graphviz_still_writes_text_call_graph(tmp_path, monkeypatch, capsys):
     def boom(*a, **k):
-        raise graphviz.ExecutableNotFound(["dot"])
+        raise DotNotFound
 
     monkeypatch.setattr("pyflowcharts.output.render", boom)
     monkeypatch.setattr("pyflowcharts.output.render_callgraph", boom)

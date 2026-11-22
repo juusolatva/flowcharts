@@ -8,6 +8,7 @@ from typing import Literal
 
 import graphviz
 
+from pyflowcharts.backends.dot_runner import PICTURE_TIMEOUT, run_dot
 from pyflowcharts.backends.mermaid import escape
 from pyflowcharts.calls import resolved_edges
 from pyflowcharts.ir import Chart, Document
@@ -73,8 +74,9 @@ def to_callgraph_dot(documents: list[Document]) -> str:
 
 
 def render_callgraph(documents: list[Document], fmt: Literal["svg", "png"]) -> bytes:
-    """Render with Graphviz. Raises ``graphviz.ExecutableNotFound`` if ``dot`` is missing."""
-    return to_callgraph_digraph(documents).pipe(format=fmt)
+    """Render with Graphviz. Raises `DotNotFound` if ``dot`` is missing and `DotFailed` if
+    it fails or takes longer than `PICTURE_TIMEOUT`."""
+    return run_dot(to_callgraph_dot(documents), fmt, timeout=PICTURE_TIMEOUT)
 
 
 def to_callgraph_mermaid(documents: list[Document]) -> str:

@@ -95,7 +95,7 @@ A parameter named like a function hides it, as in Python. Not resolved: shadowin
 | Code | Meaning |
 |---|---|
 | 0 | Success (a file named on the command line with nothing to chart, or a directory with no source files, only produces a warning) |
-| 1 | A function was skipped because of a syntax error or the size limit (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
+| 1 | A function was skipped because of a syntax error or the size limit (a warning names it; the other functions are still written), a file could not be read or decoded, an output file could not be written, a picture could not be rendered (Graphviz failed, or took longer than 5 minutes), a directory could not be read, an unknown `--function`, or two inputs would write the same outputs |
 | 2 | SVG/PNG requested but Graphviz `dot` is not installed (other formats are still written) |
 
 ## Native desktop GUI (preview)

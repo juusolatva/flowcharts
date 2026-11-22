@@ -3,8 +3,11 @@
 from __future__ import annotations
 
 import json
-import subprocess
 from typing import Any
+
+from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound, run_dot
+
+LAYOUT_TIMEOUT = 30.0  # interactive: a layout that takes longer is reported, not awaited
 
 
 class LayoutError(Exception):
@@ -13,26 +16,15 @@ class LayoutError(Exception):
 
 def graphviz_layout(dot_source: str, *, dot: str = "dot") -> dict[str, Any]:
     try:
-        result = subprocess.run(
-            [dot, "-Tjson"],
-            input=dot_source.encode("utf-8"),
-            capture_output=True,
-            timeout=30,
-            check=False,
-        )
-    except subprocess.TimeoutExpired:
-        raise LayoutError("Graphviz layout exceeded 30 seconds") from None
-    except OSError as error:
+        output = run_dot(dot_source, "json", timeout=LAYOUT_TIMEOUT, dot=dot)
+    except DotNotFound:
         raise LayoutError(
-            f"Graphviz 'dot' could not be run: {error.strerror or error}. "
-            "Install Graphviz and make sure dot is on PATH."
+            "Graphviz 'dot' could not be found. Install Graphviz and make sure dot is on PATH."
         ) from None
-    if result.returncode:
-        raise LayoutError(
-            result.stderr.decode("utf-8", errors="replace").strip() or "Graphviz failed"
-        )
+    except DotFailed as error:
+        raise LayoutError(str(error)) from None
     try:
-        layout = json.loads(result.stdout)
+        layout = json.loads(output)
     except ValueError:  # includes UnicodeDecodeError
         raise LayoutError("Graphviz returned invalid JSON layout data") from None
     if not isinstance(layout, dict):

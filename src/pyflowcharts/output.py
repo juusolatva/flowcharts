@@ -11,14 +11,13 @@ from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Literal
 
-import graphviz
-
 from pyflowcharts.backends.callgraph import (
     render_callgraph,
     to_callgraph_dot,
     to_callgraph_mermaid,
 )
 from pyflowcharts.backends.dot import render, to_dot
+from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound
 from pyflowcharts.backends.mermaid import to_mermaid
 from pyflowcharts.inputs import case_key
 from pyflowcharts.ir import Chart, Document
@@ -114,9 +113,12 @@ class Writer:
                 case "svg" | "png" if not self.graphviz_missing:
                     try:
                         data = image(fmt)
-                    except graphviz.ExecutableNotFound:
+                    except DotNotFound:
                         print(GRAPHVIZ_MISSING, file=sys.stderr)
                         self.graphviz_missing = True
+                    except DotFailed as err:
+                        print(f"error: cannot render {target}: {err}", file=sys.stderr)
+                        self.write_failed = True
                     else:
                         self._save(target, data)
 
