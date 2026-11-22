@@ -19,6 +19,7 @@ from pyflowcharts.ir import (
     ParamKind,
     SourceLocation,
 )
+from pyflowcharts.text import escape_surrogates
 
 SUPPORTED_VERSIONS = (1, 2, 3)
 
@@ -28,7 +29,10 @@ class UnsupportedSchemaVersionError(ValueError):
 
 
 def to_json(doc: Document) -> str:
-    return json.dumps(dataclasses.asdict(doc), indent=2, ensure_ascii=False) + "\n"
+    """Lone surrogates (undecodable POSIX file-name bytes) are written as ``\\udcff``
+    escapes, so the text is valid UTF-8 and reads back to the same file name."""
+    text = json.dumps(dataclasses.asdict(doc), indent=2, ensure_ascii=False)
+    return escape_surrogates(text) + "\n"
 
 
 def from_json(text: str) -> Document:

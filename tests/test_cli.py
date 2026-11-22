@@ -1,3 +1,4 @@
+import os
 import shutil
 from pathlib import Path, PurePosixPath
 
@@ -444,3 +445,56 @@ def test_select_keeps_source_text(tmp_path):
     result = PythonFrontend().parse(src.read_bytes(), str(src), ChartOptions())
     selected = _select([(Input(src, PurePosixPath("m"), explicit=True), result)], ["g"])
     assert present(selected)[0][1].source_text == result.source_text
+
+
+posix_names = pytest.mark.skipif(os.name != "posix", reason="POSIX file names with any bytes")
+
+
+@posix_names
+def test_unreadable_source_does_not_stop_the_run(tmp_path, capsys):
+    tree = tmp_path / "src"
+    tree.mkdir()
+    (tree / "a.py").write_bytes(b'# coding: raw_unicode_escape\ndef f():\n    x = "\\ud800"\n')
+    write(tree, "b.py", "def g(): pass\n")
+    assert main([str(tree), "-o", str(tmp_path / "o"), "-f", "json"]) == 1
+    assert f"{tree / 'a.py'}: error: cannot decode source" in capsys.readouterr().err
+    assert (tmp_path / "o/b.json").exists()
+
+
+@posix_names
+def test_non_utf8_file_name_is_written_and_round_trips(tmp_path, capsys):
+    tree = tmp_path / "src"
+    tree.mkdir()
+    path = tree / os.fsdecode(b"bad-\xff.py")
+    path.write_text("def f():\n    pass\n\nf()\n", encoding="utf-8")
+    out = tmp_path / "o"
+    assert main([str(tree), "-o", str(out), "-f", "json", "dot", "mermaid"]) == 0
+    assert capsys.readouterr().err == ""
+    key = os.fsdecode(b"bad-\xff")
+    text = (out / f"{key}.json").read_text(encoding="utf-8")
+    assert "\\udcff" in text
+    assert from_json(text).source == str(path)
+    assert "module bad-\\\\xff" in (out / f"{key}.dot").read_text(encoding="utf-8")
+    assert '["bad-\\xff"]' in (out / "callgraph.mmd").read_text(encoding="utf-8")
+    assert "bad-\\\\xff" in (out / "callgraph.dot").read_text(encoding="utf-8")
+
+
+@posix_names
+def test_newline_in_file_name_stays_on_one_line(tmp_path, capsys):
+    tree = tmp_path / "src"
+    tree.mkdir()
+    write(tree, "a\nb.py", "def f(:\n    pass\n\ndef g(): pass\n")
+    out = tmp_path / "o"
+    assert main([str(tree), "-o", str(out), "-f", "mermaid"]) == 1
+    assert '    subgraph s0 ["a\\nb"]\n' in (out / "callgraph.mmd").read_text(encoding="utf-8")
+    err = capsys.readouterr().err
+    assert f"{tree}/a\\nb.py:1: warning: syntax error in 'f'; function skipped\n" in err
+
+
+@posix_names
+def test_control_characters_in_file_names_are_escaped_in_messages(tmp_path, capsys):
+    path = write(tmp_path, "x\x1b[2J.py", "")
+    assert main([str(path), "-o", str(tmp_path / "o"), "-f", "json"]) == 0
+    err = capsys.readouterr().err
+    assert "\x1b" not in err
+    assert "x\\x1b[2J.py: nothing to chart" in err

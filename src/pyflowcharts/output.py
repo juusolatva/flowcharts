@@ -6,7 +6,6 @@ import contextlib
 import os
 import secrets
 import stat
-import sys
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path, PurePosixPath
@@ -23,6 +22,7 @@ from pyflowcharts.backends.mermaid import to_mermaid
 from pyflowcharts.inputs import case_key
 from pyflowcharts.ir import Chart, Document
 from pyflowcharts.serialize import to_json
+from pyflowcharts.text import report
 
 EXTENSIONS = {"dot": "dot", "svg": "svg", "png": "png", "mermaid": "mmd"}
 
@@ -115,10 +115,10 @@ class Writer:
                     try:
                         data = image(fmt, partial(_graphviz_warning, target))
                     except DotNotFound:
-                        print(GRAPHVIZ_MISSING, file=sys.stderr)
+                        report(GRAPHVIZ_MISSING)
                         self.graphviz_missing = True
                     except DotFailed as err:
-                        print(f"error: cannot render {target}: {err}", file=sys.stderr)
+                        report(f"error: cannot render {target}: {err}")
                         self.write_failed = True
                     else:
                         self._save(target, data)
@@ -134,10 +134,7 @@ class Writer:
                 self._make_dirs(directory)
                 self._dirs[directory] = True
             except _LinkRefused as refused:
-                print(
-                    f"error: refusing to write through symbolic link {refused.link}",
-                    file=sys.stderr,
-                )
+                report(f"error: refusing to write through symbolic link {refused.link}")
                 self.write_failed = True
                 self._dirs[directory] = False
                 self._dirs[refused.link] = False  # covers everything else below the link
@@ -166,7 +163,7 @@ class Writer:
             self._report(target, err)
 
     def _report(self, target: Path, err: OSError) -> None:
-        print(f"error: cannot write {target}: {err.strerror or err}", file=sys.stderr)
+        report(f"error: cannot write {target}: {err.strerror or err}")
         self.write_failed = True
 
 
@@ -218,7 +215,7 @@ def _restrict_to(fd: int, temporary: Path, target: Path) -> None:
 def _graphviz_warning(target: Path, message: str) -> None:
     """A problem Graphviz reported while still writing ``target`` (the exit code is
     unaffected, as before)."""
-    print(f"warning: {target}: {message}", file=sys.stderr)
+    report(f"warning: {target}: {message}")
 
 
 def _warn_case_clashes(doc: Document) -> None:
@@ -230,8 +227,7 @@ def _warn_case_clashes(doc: Document) -> None:
         if len(names) > 1:
             quoted = [f"'{name}'" for name in names]
             listed = f"{', '.join(quoted[:-1])} and {quoted[-1]}"
-            print(
+            report(
                 f"warning: {doc.source}: functions {listed} differ only in case; their files "
-                "overwrite each other on case-insensitive file systems",
-                file=sys.stderr,
+                "overwrite each other on case-insensitive file systems"
             )

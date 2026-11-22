@@ -3,6 +3,7 @@
 import io
 import json
 import os
+import shutil
 import subprocess
 import sys
 from pathlib import Path
@@ -25,32 +26,43 @@ def test_deep_json_frame_does_not_stop_following_requests() -> None:
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX surrogateescaped file names")
-def test_non_utf8_file_name_survives_open_and_refresh(tmp_path: Path) -> None:
+@pytest.mark.skipif(shutil.which("dot") is None, reason="Graphviz not installed")
+def test_non_utf8_file_name_survives_open_refresh_and_layout(tmp_path: Path) -> None:
     path = tmp_path / os.fsdecode(b"bad-\xff.py")
-    path.write_text("def valid():\n    pass\n", encoding="utf-8")
+    path.write_text("def valid():\n    pass\n\nvalid()\n", encoding="utf-8")
     opening = {
         "protocol_version": 1,
         "id": 1,
         "method": "open",
         "params": {"paths": [str(tmp_path)]},
     }
+    # The GUI asks for the call graph right after opening; the file name is in its labels.
+    graphs = [
+        {"protocol_version": 1, "id": 3, "method": "graph", "params": params}
+        for params in (
+            {"generation": 1, "document": None},
+            {"generation": 1, "document": 0, "qualname": "<module>"},
+        )
+    ]
+    requests = [opening, {"protocol_version": 1, "id": 2, "method": "refresh"}, *graphs]
     result = subprocess.run(
         [sys.executable, "-m", "pyflowcharts.desktop"],
         env={**os.environ, "PYTHONPATH": os.pathsep.join(sys.path)},
-        input=(
-            json.dumps(opening) + '\n{"protocol_version":1,"id":2,"method":"refresh"}\n'
-        ).encode(),
+        input="".join(json.dumps(request) + "\n" for request in requests).encode(),
         capture_output=True,
         timeout=10,
         check=False,
     )
     assert result.returncode == 0, result.stderr.decode("utf-8")
     responses = [json.loads(line) for line in result.stdout.decode("utf-8").splitlines()]
-    assert len(responses) == 2
+    assert len(responses) == 4
     snapshot = responses[0]["result"]["snapshot"]
     assert snapshot["entries"][0]["source"] == str(path)
     assert snapshot["documents"][0]["document"]["source"] == str(path)
     assert responses[1]["result"] == {"changed": False}
+    for response in responses[2:]:
+        assert response["ok"], response
+        assert response["result"]["layout"]
     assert result.stderr == b""
 
 

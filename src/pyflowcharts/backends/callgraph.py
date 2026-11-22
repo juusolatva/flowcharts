@@ -12,6 +12,7 @@ from pyflowcharts.backends.dot_runner import PICTURE_TIMEOUT, Warn, run_dot
 from pyflowcharts.backends.mermaid import escape
 from pyflowcharts.calls import resolved_edges
 from pyflowcharts.ir import Chart, Document
+from pyflowcharts.text import display
 
 type _Key = tuple[int, str]  # (document index, chart qualname)
 
@@ -36,7 +37,7 @@ def _charts(doc: Document) -> list[Chart]:
 
 def _clusters(documents: list[Document]) -> list[_Cluster]:
     return [
-        _Cluster(i, doc.module_name or doc.source, [c.qualname for c in charts])
+        _Cluster(i, display(doc.module_name or doc.source), [c.qualname for c in charts])
         for i, doc in enumerate(documents)
         if (charts := _charts(doc))
     ]
