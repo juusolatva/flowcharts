@@ -4,7 +4,9 @@
 //   --refresh-fails      answer "refresh" with an error
 //   --open-fails         answer "open" with an error
 //   --graph-delay=MS     wait before answering "graph"
+//   --report-cwd         each "open" snapshot carries "<working directory>\n<process id>"
 #include <QCoreApplication>
+#include <QDir>
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
@@ -20,6 +22,7 @@ struct Options {
     bool diagnosticsOnce = false;
     bool refreshFails = false;
     bool openFails = false;
+    bool reportCwd = false;
     int refreshDelay = 0;
     int graphDelay = 0;
 };
@@ -29,6 +32,7 @@ Options parseOptions(const QStringList &arguments) {
     options.diagnosticsOnce = arguments.contains("--diagnostics-once");
     options.refreshFails = arguments.contains("--refresh-fails");
     options.openFails = arguments.contains("--open-fails");
+    options.reportCwd = arguments.contains("--report-cwd");
     for (const auto &argument : arguments) {
         if (argument.startsWith("--refresh-delay="))
             options.refreshDelay = argument.section('=', 1).toInt();
@@ -46,8 +50,13 @@ QString errorMessage(const QString &method) {
     return "recoverable";
 }
 
-QJsonObject snapshot(int generation, bool withDiagnostic) {
-    const auto messages = withDiagnostic ? QJsonArray{"problem"} : QJsonArray{};
+QJsonObject snapshot(int generation, const Options &options) {
+    QJsonArray messages;
+    if (options.diagnosticsOnce && generation == 1)
+        messages.append("problem");
+    if (options.reportCwd)
+        messages.append(QDir::currentPath() + '\n' +
+                        QString::number(QCoreApplication::applicationPid()));
     return QJsonObject{{"generation", generation},
                        {"entries", QJsonArray{}},
                        {"messages", messages},
@@ -70,8 +79,7 @@ QJsonObject respond(const QJsonObject &request, const Options &options, int &gen
         response["error"] = QJsonObject{{"code", "example"}, {"message", errorMessage(method)}};
     } else if (method == "open") {
         ++generation;
-        response["result"] = QJsonObject{
-            {"snapshot", snapshot(generation, options.diagnosticsOnce && generation == 1)}};
+        response["result"] = QJsonObject{{"snapshot", snapshot(generation, options)}};
     } else if (method == "refresh") {
         response["result"] = QJsonObject{{"changed", false}};
     } else {

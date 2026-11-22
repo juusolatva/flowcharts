@@ -1,6 +1,7 @@
 #include "commandline.h"
 
 #include <QDir>
+#include <QStandardPaths>
 
 namespace flowcharts {
 
@@ -20,15 +21,15 @@ LaunchOptions launchOptions(const QCommandLineParser &parser, const QString &pro
         options.program = parser.value("engine");
     } else {
         // Development builds use this checkout. A release bundle will supply its own engine.
-        options.program = "uv";
-        options.arguments = {"run",
-                             "--project",
-                             QDir::toNativeSeparators(projectDirectory),
-                             "--no-sync",
-                             "python",
-                             "-u",
-                             "-m",
-                             "pyflowcharts.desktop"};
+        // Nothing in the launch directory may take part: `uv` is looked up on PATH only and
+        // left empty when missing (on Windows, a bare program name can also be found in the
+        // current directory), the worker runs in the checkout, and -P keeps the current
+        // directory out of Python's module search. Source paths are made absolute by the GUI.
+        options.program = QStandardPaths::findExecutable("uv");
+        options.arguments = {"run", "--project", QDir::toNativeSeparators(projectDirectory),
+                             "--no-sync"};
+        options.arguments << "python" << "-P" << "-u" << "-m" << "pyflowcharts.desktop";
+        options.workingDirectory = projectDirectory;
     }
     options.arguments.append(parser.values("engine-argument"));
     return options;

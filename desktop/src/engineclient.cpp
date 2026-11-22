@@ -47,13 +47,22 @@ void EngineClient::stop() {
     }
 }
 
-void EngineClient::start(const QString &program, const QStringList &arguments) {
+void EngineClient::start(const QString &program, const QStringList &arguments,
+                         const QString &workingDirectory) {
     stop();
     m_stopping = false;
     m_failed = false;
     m_stderr.clear();
     m_reader.clear();
+    if (program.isEmpty()) {
+        QTimer::singleShot(0, this, [this] {
+            fail("Could not find the analysis engine. Install uv and put it on PATH, or choose "
+                 "an engine with --engine.");
+        });
+        return;
+    }
     m_process.setProcessChannelMode(QProcess::SeparateChannels);
+    m_process.setWorkingDirectory(workingDirectory);
     m_process.start(program, arguments);
     m_deadline.start(120000);
 }

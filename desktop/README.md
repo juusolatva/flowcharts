@@ -34,8 +34,12 @@ cmake --build build/desktop --parallel
 You can also start with no paths and use **File → Open files / Open folder**. Multiple paths
 can be supplied on the command line. The development launcher uses `uv run --project` with
 this checkout's absolute path and `--no-sync`; run `uv sync` before launching it. Running the
-executable from another directory does not change where its engine comes from. Source path
-arguments are relative to the caller's directory.
+executable from another directory does not change where its engine comes from: `uv` is found
+on `PATH` only (the engine reports an error if it is missing), the worker runs in this
+checkout, and Python starts with `-P`, so nothing in the launch directory is imported.
+`PYTHONPATH` is still honoured. Source path arguments are relative to the
+caller's directory. A replacement engine given with `--engine` runs as given, in the caller's
+directory.
 
 ### Windows
 

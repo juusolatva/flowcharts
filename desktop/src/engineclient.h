@@ -15,7 +15,8 @@ class EngineClient : public QObject {
 public:
     explicit EngineClient(QObject *parent = nullptr);
     ~EngineClient() override;
-    void start(const QString &program, const QStringList &arguments);
+    void start(const QString &program, const QStringList &arguments,
+               const QString &workingDirectory = {});
     qint64 request(const QString &method, const QJsonObject &params);
     bool idle() const;
     bool running() const;

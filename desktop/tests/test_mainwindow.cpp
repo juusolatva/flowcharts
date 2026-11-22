@@ -1,10 +1,12 @@
 #include "graphview.h"
 #include "mainwindow.h"
 
+#include <QAction>
 #include <QDockWidget>
 #include <QLabel>
 #include <QPlainTextEdit>
 #include <QStatusBar>
+#include <QTemporaryDir>
 #include <QtTest>
 
 using namespace flowcharts;
@@ -87,6 +89,29 @@ private slots:
         QTest::qWait(2500);
         QCOMPARE(text->toPlainText().count("refresh failed"), 1);
         QVERIFY(!dock->isVisible());
+    }
+    void restartedEngineKeepsItsWorkingDirectory() {
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        MainWindow window(fakeEngine(), {"--report-cwd"}, directory.path());
+        const auto *text =
+            window.findChild<QDockWidget *>("diagnosticsDock")->findChild<QPlainTextEdit *>();
+        window.openPaths({"/project"});
+        QTRY_VERIFY(!text->toPlainText().isEmpty());
+        const auto first = text->toPlainText().split('\n');
+        QCOMPARE(first.size(), 2);
+        QCOMPARE(QDir(first[0]).canonicalPath(), QDir(directory.path()).canonicalPath());
+        int restarts = 0;
+        for (auto *action : window.findChildren<QAction *>()) {
+            if (action->text() == "Restart analysis &engine") {
+                action->trigger();
+                ++restarts;
+            }
+        }
+        QCOMPARE(restarts, 1);
+        // The restart clears the diagnostics until the new process reports its id.
+        QTRY_VERIFY(text->toPlainText().split('\n').value(1, first[1]) != first[1]);
+        QCOMPARE(text->toPlainText().split('\n')[0], first[0]);
     }
     void failedOpenReplacesAnalysingPlaceholder() {
         MainWindow window(fakeEngine(), {"--open-fails"});

@@ -19,7 +19,8 @@ class SourceView;
 class MainWindow : public QMainWindow {
     Q_OBJECT
 public:
-    MainWindow(const QString &engine, const QStringList &arguments, QWidget *parent = nullptr);
+    MainWindow(const QString &engine, const QStringList &arguments,
+               const QString &workingDirectory = {}, QWidget *parent = nullptr);
     void openPaths(const QStringList &paths);
 
 private:
@@ -37,8 +38,12 @@ private:
     void reportError(const QString &message);
 
     EngineClient m_engine;
-    QString m_program;
-    QStringList m_arguments;
+    struct EngineCommand {
+        QString program;
+        QStringList arguments;
+        QString workingDirectory;
+    };
+    EngineCommand m_command;
     QStringList m_paths;
     Workspace m_workspace;
     ChartRef m_current;

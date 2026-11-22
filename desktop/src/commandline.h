@@ -8,6 +8,7 @@ struct LaunchOptions {
     QString program;
     QStringList arguments;
     QStringList paths;
+    QString workingDirectory; // empty: the caller's directory
 };
 
 void configureCommandLine(QCommandLineParser &parser);
