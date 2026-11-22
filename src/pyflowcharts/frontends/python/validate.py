@@ -8,7 +8,6 @@ on a slice of the file that keeps its line numbers.
 from __future__ import annotations
 
 import ast
-import re
 import warnings
 from dataclasses import dataclass
 
@@ -20,6 +19,8 @@ from pyflowcharts.frontends.python.source import Source
 
 OUTSIDE = "syntax error outside functions; nearby code may be missing"
 _HEADER = b"if 1:\n"
+# Every byte but a newline becomes a space, so blanked code keeps its line numbers.
+_BLANK = bytes(byte if byte == ord("\n") else ord(" ") for byte in range(256))
 
 
 @dataclass(frozen=True)
@@ -103,7 +104,7 @@ def _stub(data: bytes, functions: list[Found], base: int = 0) -> bytes:
         if name is None:
             continue
         start, end = name.end_byte - base, func.node.end_byte - base
-        pieces += [data[position:start], b"(): pass", re.sub(rb"[^\n]", b" ", data[start:end])]
+        pieces += [data[position:start], b"(): pass", data[start:end].translate(_BLANK)]
         position = end
     pieces.append(data[position:])
     return b"".join(pieces)
