@@ -12,6 +12,7 @@ from pyflowcharts.frontends.python.nodes import is_docstring, named
 from pyflowcharts.frontends.python.source import Source
 from pyflowcharts.frontends.python.statements import convert_statements
 from pyflowcharts.ir import MODULE_QUALNAME, Chart, ChartOptions, SourceLocation
+from pyflowcharts.text import display
 
 UNSUPPORTED = "unsupported syntax in module code; module chart skipped"
 STRAY = "syntax error in module code; module chart skipped"
@@ -60,7 +61,7 @@ def module_chart(
     location = _location(root, src)
     nodes, edges, calls = build_chart(
         MODULE_QUALNAME,
-        f"module {PurePath(path).stem}",
+        f"module {display(PurePath(path).stem)}",
         location,
         convert_statements(root, src, options, resolver),
         options,
