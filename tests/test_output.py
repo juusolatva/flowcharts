@@ -2,9 +2,9 @@ import os
 import stat
 from pathlib import PurePosixPath
 
-import graphviz
 import pytest
 
+from pyflowcharts.backends.dot_runner import DotFailed, DotNotFound
 from pyflowcharts.calls import link
 from pyflowcharts.frontends.python import PythonFrontend
 from pyflowcharts.ir import ChartOptions
@@ -54,7 +54,7 @@ def test_dotted_stem_keeps_full_name(tmp_path):  # Review Focus 2
 
 def test_missing_graphviz_reported_once_for_module_and_functions(tmp_path, monkeypatch, capsys):
     def boom(*args, **kwargs):
-        raise graphviz.ExecutableNotFound(["dot"])
+        raise DotNotFound
 
     monkeypatch.setattr("pyflowcharts.output.render", boom)
     w = Writer(tmp_path, ["svg"])
@@ -256,3 +256,50 @@ def test_failed_cleanup_does_not_hide_the_write_error(tmp_path, monkeypatch, cap
     w.write(parse("def f(): pass\n"), PurePosixPath("m"))
     assert w.write_failed
     assert "No space left on device" in capsys.readouterr().err
+
+
+def test_failed_picture_is_reported_and_the_rest_written(tmp_path, monkeypatch, capsys):
+    def render(chart, fmt, warn=None):
+        if chart.qualname == "f":
+            raise DotFailed("rendering took longer than 300 s")
+        return b"<svg/>"
+
+    monkeypatch.setattr("pyflowcharts.output.render", render)
+    w = Writer(tmp_path, ["json", "svg"])
+    w.write(parse("def f(): pass\ndef g(): pass\n"), PurePosixPath("m"))
+    assert w.write_failed
+    assert not w.graphviz_missing
+    err = capsys.readouterr().err
+    assert (
+        err
+        == f"error: cannot render {tmp_path / 'm' / 'f.svg'}: rendering took longer than 300 s\n"
+    )
+    assert files(tmp_path) == {"m.json", "m/g.svg"}
+
+
+def test_failed_call_graph_is_reported(tmp_path, monkeypatch, capsys):
+    def render_callgraph(documents, fmt, warn=None):
+        raise DotFailed("Error: trouble")
+
+    monkeypatch.setattr("pyflowcharts.output.render_callgraph", render_callgraph)
+    w = Writer(tmp_path, ["svg", "dot"])
+    w.write_callgraph(link([parse_as("def f():\n    f()\n", "a")]))
+    assert w.write_failed
+    assert "cannot render" in capsys.readouterr().err
+    assert files(tmp_path) == {"callgraph.dot"}
+
+
+def test_graphviz_warnings_name_the_picture(tmp_path, monkeypatch, capsys):
+    def render(chart, fmt, warn=None):
+        assert warn is not None
+        warn("Warning: scaling by 0.5")
+        return b"PNG"
+
+    monkeypatch.setattr("pyflowcharts.output.render", render)
+    w = Writer(tmp_path, ["png"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert not w.write_failed
+    assert (
+        capsys.readouterr().err == f"warning: {tmp_path / 'm' / 'f.png'}: Warning: scaling by 0.5\n"
+    )
+    assert files(tmp_path) == {"m/f.png"}
