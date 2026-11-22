@@ -101,13 +101,14 @@ private slots:
         const auto first = text->toPlainText().split('\n');
         QCOMPARE(first.size(), 2);
         QCOMPARE(QDir(first[0]).canonicalPath(), QDir(directory.path()).canonicalPath());
-        QAction *restart = nullptr;
+        int restarts = 0;
         for (auto *action : window.findChildren<QAction *>()) {
-            if (action->text() == "Restart analysis &engine")
-                restart = action;
+            if (action->text() == "Restart analysis &engine") {
+                action->trigger();
+                ++restarts;
+            }
         }
-        QVERIFY(restart);
-        restart->trigger();
+        QCOMPARE(restarts, 1);
         // The restart clears the diagnostics until the new process reports its id.
         QTRY_VERIFY(text->toPlainText().split('\n').value(1, first[1]) != first[1]);
         QCOMPARE(text->toPlainText().split('\n')[0], first[0]);
