@@ -22,6 +22,7 @@ from pyflowcharts.inputs import Input, collision_error, expand
 from pyflowcharts.ir import MODULE_QUALNAME
 from pyflowcharts.output import Writer
 from pyflowcharts.pipeline import parse_all
+from pyflowcharts.text import report
 
 FORMATS = ("json", "dot", "svg", "png", "mermaid")
 DEFAULT_FORMATS = ["svg", "json"]
@@ -78,14 +79,14 @@ def _expand_and_parse(
     pictures = not args.no_call_graph and any(fmt != "json" for fmt in formats)
     reserved = {"callgraph": CALLGRAPH_RESERVED} if pictures else {}
     if (collision := collision_error(expansion.inputs, reserved, fold_case=True)) is not None:
-        print(collision, file=sys.stderr)
+        report(collision)
         return None
 
     for message in expansion.warnings + expansion.errors:
-        print(message, file=sys.stderr)
+        report(message)
     parsed = parse_all(expansion.inputs, chart_options(args))
     for message in parsed.read_errors:
-        print(message, file=sys.stderr)
+        report(message)
     return parsed.results, not parsed.read_errors and not expansion.errors
 
 
@@ -95,10 +96,10 @@ def _report(results: list[tuple[Input, ParseResult]], empty: set[Path]) -> bool:
     ok = True
     for item, result in results:
         for warning in result.warnings:
-            print(warning, file=sys.stderr)
+            report(str(warning))
             ok = False
         if item.path in empty:
-            print(f"warning: {item.path}: nothing to chart", file=sys.stderr)
+            report(f"warning: {item.path}: nothing to chart")
     return ok
 
 
@@ -174,7 +175,7 @@ def _select(
     if unknown:
         shown = ", ".join(repr(name) for name in unknown)
         listing = ", ".join(available) or "(none)"
-        print(f"error: unknown function {shown}; available: {listing}", file=sys.stderr)
+        report(f"error: unknown function {shown}; available: {listing}")
         return None
     wanted = {_name_key(name) for name in names}
     selected = []

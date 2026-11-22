@@ -45,7 +45,12 @@ class Source:
             text = decode_source(raw)
         except (SyntaxError, LookupError, UnicodeDecodeError) as e:
             raise SourceError(path, f"cannot decode source: {e}") from e
-        return cls(text, path)
+        try:
+            return cls(text, path)
+        except UnicodeEncodeError as e:  # a codec such as raw_unicode_escape made a surrogate
+            code = ord(e.object[e.start])
+            message = f"cannot decode source: it decodes to U+{code:04X}, which is not text"
+            raise SourceError(path, message) from None
 
     # -- labels ---------------------------------------------------------------
 

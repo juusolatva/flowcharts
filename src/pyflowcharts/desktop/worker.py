@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import dataclasses
 import json
-import re
 import sys
 import traceback
 from collections.abc import Callable, Iterator, Sequence
@@ -16,12 +15,11 @@ from pyflowcharts.backends.dot import to_dot
 from pyflowcharts.desktop.layout import LayoutError, graphviz_layout
 from pyflowcharts.explorer.workspace import Snapshot, Workspace, snapshot_json
 from pyflowcharts.ir import ChartOptions, Document
+from pyflowcharts.text import escape_surrogates
 
 PROTOCOL_VERSION = 1
 MAX_REQUEST_BYTES = 1024 * 1024
 _NEWLINES = ("\n", b"\n")
-# Python keeps undecodable POSIX file-name bytes as lone surrogates, which UTF-8 cannot encode.
-_LONE_SURROGATE = re.compile("[\ud800-\udfff]")
 
 
 class ProtocolError(Exception):
@@ -190,8 +188,7 @@ def _respond(session: Session, body: bytes | str | None) -> dict[str, Any]:
 
 
 def _encode(response: dict[str, Any]) -> str:
-    text = json.dumps(response, ensure_ascii=False, separators=(",", ":"))
-    return _LONE_SURROGATE.sub(lambda match: f"\\u{ord(match[0]):04x}", text)
+    return escape_surrogates(json.dumps(response, ensure_ascii=False, separators=(",", ":")))
 
 
 def serve(

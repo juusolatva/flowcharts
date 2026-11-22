@@ -34,6 +34,12 @@ def test_bad_sources_are_file_level_errors():
             src(raw)
 
 
+def test_lone_surrogate_from_a_codec_is_a_file_level_error():
+    # raw_unicode_escape turns the text \ud800 into a lone surrogate, which UTF-8 cannot hold.
+    with pytest.raises(SourceError, match="cannot decode source"):
+        src(b'# coding: raw_unicode_escape\nx = "\\ud800"\n')
+
+
 def test_source_text_joins_wrapped_code():
     s, node = first_stmt("def f():\n    g(\n        1,  # note\n        0x2)\n")
     assert s.source_text(node) == "g(1, 0x2)"
