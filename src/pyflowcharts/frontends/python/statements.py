@@ -256,7 +256,7 @@ class _Converter:
             label += "*"
             rest = rest[1:]
         if rest:
-            label += " " + " ".join(self.src.source_text(c) for c in rest)
+            label += " " + self._list_text(rest)  # PEP 758: `except A, B:`
         block = next((c for c in clause.children if c.type == "block"), None)
         return Handler(label, self.src.location(clause), self.block(block), self._calls(clause))
 
