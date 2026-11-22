@@ -499,8 +499,9 @@ def nested_finally(depth: int, line: int = 2) -> Block:
 
 
 def test_runaway_finally_copies_stop_at_the_node_limit():
+    body = nested_finally(12)  # about 3**12 copies of the innermost body
     with pytest.raises(ChartTooLarge) as e:
-        chart(nested_finally(12))  # about 3**12 copies of the innermost body
+        chart(body)
     assert str(e.value) == "more than 10000 nodes"
 
 
@@ -516,8 +517,9 @@ def nested_handlers(count: int) -> Block:
 
 
 def test_exception_edges_stop_at_the_edge_limit():
+    body = nested_handlers(300)  # about 300 * 300 edges from fewer than 700 nodes
     with pytest.raises(ChartTooLarge) as e:
-        chart(nested_handlers(300))  # about 300 * 300 edges from fewer than 700 nodes
+        chart(body)
     assert str(e.value) == "more than 40000 edges"
 
 
