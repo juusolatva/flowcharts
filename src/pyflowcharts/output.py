@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import contextlib
 import os
-import secrets
+import stat
 import sys
+import tempfile
 from collections.abc import Callable
 from pathlib import Path, PurePosixPath
 from typing import Literal
@@ -165,15 +167,20 @@ class Writer:
         self.write_failed = True
 
 
+_READ_WRITE = (
+    stat.S_IRUSR | stat.S_IWUSR | stat.S_IRGRP | stat.S_IWGRP | stat.S_IROTH | stat.S_IWOTH
+)
+
+
 def _replace(target: Path, data: str | bytes) -> None:
     """Write ``data`` to a new file beside ``target`` and move it over ``target``.
 
-    The temporary file is created exclusively (never through an existing name) with the
-    usual permissions after the umask, and text is written as ``Path.write_text`` would.
+    The temporary file has a short random name (so any output name that fits also fits it)
+    and is created exclusively, never through an existing name. Text is written as
+    ``Path.write_text`` would.
     """
-    temporary = target.parent / f".{target.name}.{secrets.token_hex(8)}.tmp"
-    flags = os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_BINARY", 0)
-    fd = os.open(temporary, flags, 0o666)
+    fd, name = tempfile.mkstemp(prefix=".", suffix=".tmp", dir=target.parent)
+    temporary = Path(name)
     try:
         if isinstance(data, bytes):
             with os.fdopen(fd, "wb") as file:
@@ -181,10 +188,26 @@ def _replace(target: Path, data: str | bytes) -> None:
         else:
             with os.fdopen(fd, "w", encoding="utf-8") as file:
                 file.write(data)
+        os.chmod(temporary, _mode(target))
         os.replace(temporary, target)
     except BaseException:
-        temporary.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):  # keep the error that got us here
+            temporary.unlink(missing_ok=True)
         raise
+
+
+def _mode(target: Path) -> int:
+    """Read and write bits for a new ``target``: what the umask allows, and no more than an
+    existing regular file there had (a private export stays private). Execute and special
+    bits are never set."""
+    umask = os.umask(0)  # the CLI is single-threaded; this only reads the mask
+    os.umask(umask)
+    mode = _READ_WRITE & ~umask
+    with contextlib.suppress(OSError):
+        existing = target.lstat()  # a link at the name says nothing about our file
+        if stat.S_ISREG(existing.st_mode):
+            mode &= existing.st_mode
+    return mode
 
 
 def _warn_case_clashes(doc: Document) -> None:

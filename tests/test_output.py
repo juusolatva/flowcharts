@@ -208,3 +208,41 @@ def test_keys_outside_the_output_directory_are_rejected(tmp_path, key):
     with pytest.raises(ValueError, match="output key"):
         Writer(tmp_path / "out", ["json"]).write(parse("def f(): pass\n"), PurePosixPath(key))
     assert not (tmp_path / "out").exists()
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permission bits")
+def test_rewritten_file_keeps_its_permissions(tmp_path):
+    (tmp_path / "m.json").write_text("old")
+    (tmp_path / "m.json").chmod(0o600)
+    previous = os.umask(0o022)
+    try:
+        Writer(tmp_path, ["json"]).write(parse("def f(): pass\n"), PurePosixPath("m"))
+    finally:
+        os.umask(previous)
+    assert stat.S_IMODE((tmp_path / "m.json").stat().st_mode) == 0o600
+    assert '"functions"' in (tmp_path / "m.json").read_text()
+
+
+def test_long_output_names_still_fit(tmp_path):
+    # 245 bytes with ".json": within the usual 255-byte name limit, with no room for a
+    # temporary name built from it.
+    key = "f" * 240
+    w = Writer(tmp_path, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath(key))
+    assert not w.write_failed
+    assert files(tmp_path) == {f"{key}.json"}
+
+
+def test_failed_cleanup_does_not_hide_the_write_error(tmp_path, monkeypatch, capsys):
+    def fail_replace(*args):
+        raise OSError(28, "No space left on device")
+
+    def fail_unlink(self, missing_ok=False):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr("pyflowcharts.output.os.replace", fail_replace)
+    monkeypatch.setattr("pyflowcharts.output.Path.unlink", fail_unlink)
+    w = Writer(tmp_path, ["json"])
+    w.write(parse("def f(): pass\n"), PurePosixPath("m"))
+    assert w.write_failed
+    assert "No space left on device" in capsys.readouterr().err
