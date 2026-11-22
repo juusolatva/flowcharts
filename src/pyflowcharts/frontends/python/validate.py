@@ -31,13 +31,22 @@ class Validation:
 def validate(src: Source, functions: list[Found], path: str) -> Validation:
     file_ok = _parses(src.data) is None
     outside = None
+    # Only a file that does not parse is checked function by function. Each check works on
+    # the function's own lines, so the whole recovery stays linear in the file's size.
+    children: dict[int, list[Found]] = {}  # by id() of the enclosing Found
+    starts: list[int] = []  # byte offset where each line starts
     if not file_ok:
-        skeleton = _stub_all(src.data, [f for f in functions if f.enclosing is None])
+        for func in functions:
+            if func.enclosing is not None:
+                children.setdefault(id(func.enclosing), []).append(func)
+        starts = _line_starts(src.lines)
+        skeleton = _stub(src.data, [f for f in functions if f.enclosing is None])
         if (line := _parses(skeleton)) is not None:
             outside = Diagnostic(path, line, OUTSIDE, None)
     skipped: dict[str, Diagnostic] = {}
     for func in functions:
-        ast_line = None if file_ok else _check_function(src.data, func, functions)
+        nested = children.get(id(func), [])
+        ast_line = None if file_ok else _check_function(src, func, nested, starts)
         ts_line = first_error_line(func.node)
         if ast_line is None and ts_line is None:
             continue
@@ -62,30 +71,42 @@ def _parses(data: bytes) -> int | None:
     return None
 
 
-def _check_function(data: bytes, func: Found, functions: list[Found]) -> int | None:
-    """The mapped, clamped error line of the function's own source, or ``None``."""
-    nested = [f for f in functions if f.enclosing is func]
-    stubbed = _stub_all(data, nested)
+def _line_starts(lines: list[bytes]) -> list[int]:
+    starts = [0]
+    for line in lines[:-1]:
+        starts.append(starts[-1] + len(line) + 1)
+    return starts
+
+
+def _check_function(src: Source, func: Found, nested: list[Found], starts: list[int]) -> int | None:
+    """The mapped, clamped error line of the function's own source (its whole lines, with
+    the functions directly inside it stubbed), or ``None``."""
     first, last = func.node.start_point.row, func.node.end_point.row
-    lines = stubbed.split(b"\n")[first : last + 1]
+    base = starts[first]
+    segment = src.data[base : starts[last] + len(src.lines[last])]
     header = _HEADER if func.node.start_point.column > 0 else b""
-    line = _parses(header + b"\n".join(lines))
+    line = _parses(header + _stub(segment, nested, base))
     if line is None:
         return None
     line = line - (1 if header else 0) + first
     return min(max(line, first + 1), last + 1)
 
 
-def _stub_all(data: bytes, functions: list[Found]) -> bytes:
+def _stub(data: bytes, functions: list[Found], base: int = 0) -> bytes:
     """Replace each function's signature and body (everything after its name) with
-    ``(): pass`` and blanks. Newlines are kept, so line numbers are unchanged."""
-    for func in sorted(functions, key=lambda f: f.node.start_byte, reverse=True):
+    ``(): pass`` and blanks. Newlines are kept, so line numbers are unchanged. ``data``
+    starts at byte ``base`` of the file; the functions must not overlap (siblings)."""
+    pieces: list[bytes] = []
+    position = 0
+    for func in sorted(functions, key=lambda f: f.node.start_byte):
         name = func.node.child_by_field_name("name")
         if name is None:
             continue
-        region = re.sub(rb"[^\n]", b" ", data[name.end_byte : func.node.end_byte])
-        data = data[: name.end_byte] + b"(): pass" + region + data[func.node.end_byte :]
-    return data
+        start, end = name.end_byte - base, func.node.end_byte - base
+        pieces += [data[position:start], b"(): pass", re.sub(rb"[^\n]", b" ", data[start:end])]
+        position = end
+    pieces.append(data[position:])
+    return b"".join(pieces)
 
 
 def first_error_line(node: Node) -> int | None:

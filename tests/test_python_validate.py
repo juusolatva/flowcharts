@@ -1,5 +1,6 @@
 import ast
 import textwrap
+import time
 
 import pytest
 
@@ -100,3 +101,46 @@ def test_grammar_only_rejection_is_reported_as_unsupported_syntax():
     assert list(v.skipped) == ["f"]
     assert v.outside is None
     assert v.skipped["f"].message == "unsupported syntax in 'f'; function skipped"
+
+
+def test_non_ascii_text_around_nested_functions():
+    # Stubs are placed by UTF-8 byte offsets, so multi-byte characters must not shift them.
+    v = check(
+        "def outer():\n    s = 'é漢'; t = 1\n    def inner():\n        return s\n    x = = 1\n"
+    )
+    assert list(v.skipped) == ["outer"]
+    assert v.skipped["outer"].line == 5
+    v = check("def outer():\n    s = 'é漢'\n    def inner():\n        y = = 2\n    return s\n")
+    assert list(v.skipped) == ["outer.inner"]
+    assert v.skipped["outer.inner"].line == 4
+
+
+def test_each_level_of_nesting_is_checked_on_its_own():
+    text = (
+        "class A:\n"
+        "    def m(self):\n"
+        "        def a():\n"
+        "            async def b():\n"
+        "                z = = 3\n"
+        "            return b\n"
+        "        @deco\n"
+        "        def c():\n"
+        "            return 1\n"
+        "        y = = 2\n"
+        "x = 1\n"
+    )
+    v = check(text)
+    assert {name: d.line for name, d in v.skipped.items()} == {"A.m.a.b": 5, "A.m": 10}
+    assert v.outside is None
+
+
+def test_recovery_from_one_syntax_error_stays_linear():
+    # Each function used to be checked against a stubbed copy of the whole file: 20,000
+    # short functions took about 50 s. Now about 1 s; the bound leaves room for slow runners.
+    text = "".join(f"def f{i}():\n    return {i}\n\n" for i in range(20_000)) + "def bad(:\n"
+    s = Source.from_bytes(text.encode(), "t.py")
+    functions = find_functions(s.tree.root_node)
+    started = time.perf_counter()
+    v = validate(s, functions, "t.py")
+    assert time.perf_counter() - started < 10
+    assert list(v.skipped) == ["bad"]
