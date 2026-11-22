@@ -82,6 +82,17 @@ private slots:
         QCOMPARE(failure[0][0].toLongLong(), id);
         QVERIFY(failure[0][3].toString().contains("Restart"));
     }
+    void missingProgramIsActionable() {
+        EngineClient client;
+        QSignalSpy fatal(&client, &EngineClient::fatalError);
+        QSignalSpy failure(&client, &EngineClient::failed);
+        client.start({}, {"run"});
+        QTRY_COMPARE(fatal.size(), 1);
+        QVERIFY(fatal[0][0].toString().contains("PATH"));
+        QVERIFY(!client.running());
+        client.request("open", {});
+        QTRY_COMPARE(failure.size(), 1);
+    }
     void queuedGraphRequestsAreCoalesced() {
         EngineClient client;
         QSignalSpy success(&client, &EngineClient::succeeded);

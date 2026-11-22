@@ -3,7 +3,7 @@
 The native GUI launches an engine executable and exchanges **UTF-8 JSON objects, one per line**,
 over stdin/stdout. There is no network transport or frontend-language binding. stdout is
 reserved for protocol messages; diagnostic logging belongs on stderr. EOF requests shutdown.
-The initial implementation is `uv run python -I -u -m pyflowcharts.desktop`, started in the
+The initial implementation is `uv run python -P -u -m pyflowcharts.desktop`, started in the
 flowcharts checkout.
 
 The protocol is intentionally separate from the stable IR JSON schema. Changing the transport
