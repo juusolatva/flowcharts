@@ -68,6 +68,40 @@ private slots:
         QVERIFY(model.nodeTitle({}, "7#g").isEmpty());
         QVERIFY(model.nodeTitle({0, "f"}, "missing").isEmpty());
     }
+    void nodeTitlesFallBackToTheSourceWithoutAModuleName() {
+        // A top-level __init__.py has no module name; its call-graph cluster shows the path.
+        auto snapshot = fixture();
+        auto documents = snapshot["documents"].toArray();
+        auto entry = documents[0].toObject();
+        auto doc = entry["document"].toObject();
+        doc["module_name"] = "";
+        doc["source"] = "/pkg/__init__.py";
+        doc["module"] = QJsonObject{{"qualname", "<module>"}};
+        entry["document"] = doc;
+        documents[0] = entry;
+        snapshot["documents"] = documents;
+        Workspace model;
+        QString error;
+        QVERIFY(model.setSnapshot(snapshot, error));
+        QCOMPARE(model.nodeTitle({}, "0#g"), QString("/pkg/__init__.py: g"));
+        QCOMPARE(model.nodeTitle({}, "0#<module>"), QString("/pkg/__init__.py (module)"));
+    }
+    void diagnosticsKeepPercentSignsAndOmitMissingLines() {
+        auto snapshot = fixture();
+        snapshot["entries"] = QJsonArray{QJsonObject{
+            {"source", "/odd%2%3.py"},
+            {"doc", 0},
+            {"skipped",
+             QJsonArray{QJsonObject{{"qualname", "f"}, {"message", "syntax error"}, {"line", 4}},
+                        QJsonObject{{"qualname", "<module>"},
+                                    {"message", "too large"},
+                                    {"line", QJsonValue::Null}}}}}};
+        Workspace model;
+        QString error;
+        QVERIFY(model.setSnapshot(snapshot, error));
+        QCOMPARE(model.diagnostics(), QStringList({"/odd%2%3.py:4: f: syntax error",
+                                                   "/odd%2%3.py: <module>: too large"}));
+    }
     void fileViewsUseStablePathsAndCurrentDiagnostics() {
         auto snapshot = fixture();
         snapshot["entries"] = QJsonArray{QJsonObject{

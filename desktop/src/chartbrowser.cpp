@@ -83,7 +83,8 @@ void ChartBrowser::setWorkspace(const Workspace &workspace) {
         const int document = entry["doc"].isDouble() ? entry["doc"].toInt() : -1;
         const auto path = entry["source"].toString();
         const auto key = entry["key"].toString();
-        auto *file = new QStandardItem(key + '.' + QFileInfo(path).suffix());
+        const auto suffix = QFileInfo(path).suffix();
+        auto *file = new QStandardItem(suffix.isEmpty() ? key : key + '.' + suffix);
         file->setEditable(false);
         file->setIcon(style()->standardIcon(entry["error"].isString() ? QStyle::SP_MessageBoxWarning
                                                                       : QStyle::SP_FileIcon));

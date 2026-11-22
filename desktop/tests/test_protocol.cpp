@@ -32,6 +32,14 @@ private slots:
             QVERIFY(!error.isEmpty());
         }
     }
+    void nonObjectJsonSaysWhatWasExpected() {
+        FrameReader reader;
+        QVector<QJsonObject> frames;
+        QString error;
+        QVERIFY(!reader.feed("[]\n", frames, error));
+        QCOMPARE(error, QString("Invalid JSON response from engine: expected a JSON object"));
+        QVERIFY(!error.contains("no error occurred"));
+    }
     void boundsIndividualFramesNotWholeBatch() {
         FrameReader reader(8);
         QVector<QJsonObject> frames;

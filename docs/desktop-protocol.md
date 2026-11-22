@@ -99,7 +99,8 @@ For the run's call graph:
 {"generation":1,"document":null}
 ```
 
-`generation` must match the current workspace. The module qualname is `<module>`. Document
+`generation` must match the current workspace. The call graph takes no `qualname` (omit it or
+send `null`). The module qualname is `<module>`. Document
 indexes refer only to that snapshot. Result:
 
 ```json

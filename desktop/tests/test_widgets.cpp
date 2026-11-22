@@ -64,6 +64,32 @@ private slots:
         QVERIFY(files.isEmpty());
         QCOMPARE(tree->currentIndex().data().toString(), QString("g"));
     }
+    void extensionlessFilesHaveNoTrailingDot() {
+        Workspace workspace;
+        QString error;
+        QVERIFY(workspace.setSnapshot(
+            {{"generation", 1},
+             {"entries",
+              QJsonArray{
+                  QJsonObject{{"source", "/Makefile"}, {"key", "Makefile"}, {"doc", 0}},
+                  QJsonObject{{"source", "/a.py"}, {"key", "a"}, {"doc", 1}},
+              }},
+             {"documents",
+              QJsonArray{QJsonObject{{"source_text", ""},
+                                     {"document", QJsonObject{{"schema_version", 3},
+                                                              {"source", "/Makefile"},
+                                                              {"functions", QJsonArray{}}}}},
+                         QJsonObject{{"source_text", ""},
+                                     {"document", QJsonObject{{"schema_version", 3},
+                                                              {"source", "/a.py"},
+                                                              {"functions", QJsonArray{}}}}}}}},
+            error));
+        ChartBrowser browser;
+        browser.setWorkspace(workspace);
+        const auto *model = browser.findChild<QTreeView *>()->model();
+        QCOMPARE(model->index(1, 0).data().toString(), QString("Makefile"));
+        QCOMPARE(model->index(2, 0).data().toString(), QString("a.py"));
+    }
     void programmaticSelectionScrollsTreeWithoutNavigating() {
         QJsonArray functions;
         for (int i = 0; i < 200; ++i)

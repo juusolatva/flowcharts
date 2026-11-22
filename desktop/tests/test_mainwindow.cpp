@@ -113,6 +113,15 @@ private slots:
         QTRY_VERIFY(text->toPlainText().split('\n').value(1, first[1]) != first[1]);
         QCOMPARE(text->toPlainText().split('\n')[0], first[0]);
     }
+    void statusLabelsShowSourceTextLiterally() {
+        // Node titles come from source code; a label like "<b>x</b>" must not become markup.
+        MainWindow window(fakeEngine(), {});
+        for (const auto *name : {"selection", "engineStatus"}) {
+            const auto *label = window.findChild<QLabel *>(name);
+            QVERIFY(label);
+            QCOMPARE(label->textFormat(), Qt::PlainText);
+        }
+    }
     void failedOpenReplacesAnalysingPlaceholder() {
         MainWindow window(fakeEngine(), {"--open-fails"});
         window.show();

@@ -139,14 +139,15 @@ class Session:
         if "document" not in params:
             raise ProtocolError("invalid_request", "document is required (null means call graph)")
         index = params["document"]
-        qualname = params.get("qualname", "")
-        if index is not None and (
-            type(index) is not int or not isinstance(qualname, str) or not qualname
-        ):
+        qualname = params.get("qualname")
+        if index is None:
+            if qualname is not None:
+                raise ProtocolError("invalid_request", "The call graph takes no qualname")
+        elif type(index) is not int or not isinstance(qualname, str) or not qualname:
             raise ProtocolError("invalid_request", "Expected document integer and qualname string")
-        key = (index, qualname if index is not None else "")
+        key = (index, qualname or "")
         if key not in self._cache:
-            self._cache[key] = self._layout(_dot_source(snapshot.documents, index, qualname))
+            self._cache[key] = self._layout(_dot_source(snapshot.documents, *key))
         return {"generation": snapshot.generation, "layout": self._cache[key]}
 
 

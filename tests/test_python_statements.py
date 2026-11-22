@@ -117,6 +117,16 @@ def test_handler_labels_from_source():
     assert {"except (A, B) as e", "except* C", "except"} <= labels(c)
 
 
+def test_unparenthesized_handler_lists_keep_their_comma_spacing():  # PEP 758
+    c = chart(
+        "def f():\n    try:\n        a()\n    except A, B:\n        b()\n"
+        "    except  C ,D:\n        c()\n"
+    )
+    assert {"except A, B", "except C, D"} <= labels(c)
+    c = chart("def f():\n    try:\n        a()\n    except* E, F:\n        b()\n")
+    assert "except* E, F" in labels(c)
+
+
 def test_with_keeps_parentheses_and_async():
     c = chart("def f(p):\n    with (open(p) as fh, lock):\n        a()\n")
     assert "with (open(p) as fh, lock)" in labels(c)

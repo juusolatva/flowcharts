@@ -162,6 +162,7 @@ def test_module_and_callgraph_use_existing_dot_backends(tmp_path):
     assert "<module>#start" in calls[-1]
     assert request(session, "graph", generation=1, document=None)["ok"]
     assert "cluster_0" in calls[-1]
+    assert request(session, "graph", generation=1, document=None, qualname=None)["ok"]
 
 
 @pytest.mark.parametrize(
@@ -176,6 +177,9 @@ def test_module_and_callgraph_use_existing_dot_backends(tmp_path):
         ({"generation": 1, "document": "0", "qualname": "f"}, "invalid_request"),
         ({"generation": 1, "document": 0}, "invalid_request"),
         ({"generation": 1, "document": 0, "qualname": "missing"}, "not_found"),
+        # the call graph names no chart
+        ({"generation": 1, "document": None, "qualname": 3}, "invalid_request"),
+        ({"generation": 1, "document": None, "qualname": "f"}, "invalid_request"),
     ],
 )
 def test_graph_validates_generation_and_identity(tmp_path, params, code):

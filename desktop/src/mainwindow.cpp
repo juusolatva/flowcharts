@@ -40,8 +40,12 @@ MainWindow::MainWindow(const QString &engine, const QStringList &arguments,
     addDockWidget(Qt::BottomDockWidgetArea, m_diagnosticsDock);
     m_diagnosticsDock->hide();
     resizeDocks({browserDock, m_sourceDock}, {270, 450}, Qt::Horizontal);
+    // Node titles come from source code: never let QLabel guess they are rich text.
+    m_selection->setObjectName("selection");
+    m_selection->setTextFormat(Qt::PlainText);
     statusBar()->addWidget(m_selection, 1);
     m_status->setObjectName("engineStatus");
+    m_status->setTextFormat(Qt::PlainText);
     statusBar()->addPermanentWidget(m_status);
     buildActions();
     menuBar()->findChild<QMenu *>("viewMenu")->addAction(browserDock->toggleViewAction());

@@ -64,10 +64,6 @@ def convert_statements(
     return _Converter(src, options, resolver, scope).stmts(stmts)
 
 
-def convert_block(block: Node | None, src: Source, options: ChartOptions) -> Block:
-    return _Converter(src, options).block(block)
-
-
 def _async_prefix(node: Node) -> str:
     """``"async "`` for an ``async def``/``for``/``with``, else ``""``."""
     return "async " if node.children and node.children[0].type == "async" else ""
@@ -256,7 +252,7 @@ class _Converter:
             label += "*"
             rest = rest[1:]
         if rest:
-            label += " " + " ".join(self.src.source_text(c) for c in rest)
+            label += " " + self._list_text(rest)  # PEP 758: `except A, B:`
         block = next((c for c in clause.children if c.type == "block"), None)
         return Handler(label, self.src.location(clause), self.block(block), self._calls(clause))
 
