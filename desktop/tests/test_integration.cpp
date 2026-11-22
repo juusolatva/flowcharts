@@ -1,4 +1,5 @@
 #include "chartbrowser.h"
+#include "commandline.h"
 #include "graphview.h"
 #include "mainwindow.h"
 #include "sourceview.h"
@@ -31,6 +32,20 @@ static void writeSource(const QString &path, const QByteArray &text) {
     QCOMPARE(file.write(text), text.size());
 }
 
+// The launcher's own default: the real Python worker from this checkout.
+static LaunchOptions defaultEngine() {
+    QCommandLineParser parser;
+    configureCommandLine(parser);
+    parser.process(QStringList{"flowcharts-desktop"});
+    return launchOptions(parser, FLOWCHARTS_PROJECT_DIR);
+}
+
+// Restores the current directory when a test that changes it returns or fails.
+struct CurrentDirectory {
+    QString previous = QDir::currentPath();
+    ~CurrentDirectory() { QDir::setCurrent(previous); }
+};
+
 class IntegrationTest : public QObject {
     Q_OBJECT
 private slots:
@@ -54,8 +69,8 @@ private slots:
         const auto path = directory.filePath("z.py");
         const QByteArray text = "def selected():\n    pass\n\ndef broken():\n    break\n";
         writeSource(path, text);
-        MainWindow window(uv, {"run", "--project", FLOWCHARTS_PROJECT_DIR, "--no-sync", "python",
-                               "-u", "-m", "pyflowcharts.desktop"});
+        const auto engine = defaultEngine();
+        MainWindow window(engine.program, engine.arguments, engine.workingDirectory);
         window.show();
         window.openPaths({directory.path()});
         auto *graph = window.findChild<GraphView *>();
@@ -103,8 +118,8 @@ private slots:
         const auto path = directory.filePath("history.py");
         writeSource(
             path, "def first():\n    pass\n\ndef removed():\n    pass\n\ndef last():\n    pass\n");
-        MainWindow window(uv, {"run", "--project", FLOWCHARTS_PROJECT_DIR, "--no-sync", "python",
-                               "-u", "-m", "pyflowcharts.desktop"});
+        const auto engine = defaultEngine();
+        MainWindow window(engine.program, engine.arguments, engine.workingDirectory);
         window.openPaths({path});
         auto *graph = window.findChild<GraphView *>();
         auto *source = window.findChild<SourceView *>();
@@ -145,6 +160,29 @@ private slots:
         QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "last#start"), 10000);
         QVERIFY(!forward->isEnabled());
     }
+    void defaultWorkerIgnoresLaunchDirectory() {
+        if (QStandardPaths::findExecutable("uv").isEmpty())
+            QSKIP("uv is needed for the real Python worker integration test");
+        QTemporaryDir directory;
+        QVERIFY(directory.isValid());
+        // A checkout that ships its own `pyflowcharts` package, as an untrusted one could.
+        const auto marker = directory.filePath("imported");
+        QVERIFY(QDir(directory.path()).mkpath("pyflowcharts/desktop"));
+        writeSource(directory.filePath("pyflowcharts/__init__.py"),
+                    "open(r'" + marker.toUtf8() + "', 'w').close()\n");
+        writeSource(directory.filePath("pyflowcharts/desktop/__init__.py"), "");
+        writeSource(directory.filePath("pyflowcharts/desktop/__main__.py"), "");
+        writeSource(directory.filePath("source.py"), "def inside():\n    pass\n");
+        CurrentDirectory restore;
+        QVERIFY(QDir::setCurrent(directory.path()));
+        const auto engine = defaultEngine();
+        MainWindow window(engine.program, engine.arguments, engine.workingDirectory);
+        // Source paths stay relative to the launch directory, not the worker's.
+        window.openPaths({"source.py"});
+        auto *graph = window.findChild<GraphView *>();
+        QTRY_VERIFY_WITH_TIMEOUT(hasNode(graph, "0#inside"), 15000);
+        QVERIFY(!QFile::exists(marker));
+    }
     void realWorkerRendersNavigatesAndReloads() {
         const auto uv = QStandardPaths::findExecutable("uv");
         if (uv.isEmpty())
@@ -157,8 +195,8 @@ private slots:
             "def caller(value):\n    if value:\n        return target()\n    return 0\n\n"
             "caller(True)\n";
         writeSource(path, text);
-        MainWindow window(uv, {"run", "--project", FLOWCHARTS_PROJECT_DIR, "--no-sync", "python",
-                               "-u", "-m", "pyflowcharts.desktop"});
+        const auto engine = defaultEngine();
+        MainWindow window(engine.program, engine.arguments, engine.workingDirectory);
         window.show();
         window.openPaths({path});
         auto *graph = window.findChild<GraphView *>();
